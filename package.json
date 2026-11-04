@@ -1,0 +1,22 @@
+{
+  "name": "barometer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Claude plan usage on the MacBook Pro Touch Bar.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "app": "sh mac/build.sh",
+    "install-app": "sh mac/install.sh"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/im-fell-english": "^5.3.0",
+    "@fontsource/im-fell-english-sc": "^5.3.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
+}
