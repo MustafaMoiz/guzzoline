@@ -4,3 +4,5 @@ build/
 captures/
 .claude/
 .DS_Store
+dist-site/
+.netlify/

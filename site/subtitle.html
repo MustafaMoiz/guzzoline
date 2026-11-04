@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Guzzoline film subtitle</title>
+    <!-- Not part of the site: the hero film's subtitle alone, on nothing, at the film's size
+         (1344 × 768), for burning into a copy of the film. Served by the dev server. -->
+    <style>
+      html, body { margin: 0; width: 1344px; height: 768px; background: transparent; }
+      p {
+        position: absolute;
+        left: 50%;
+        bottom: 16%;
+        width: max-content;
+        max-width: 80%;
+        margin: 0;
+        transform: translateX(-50%);
+        color: #fff;
+        font: 500 34px/1.3 'IBM Plex Mono', monospace;
+        text-align: center;
+        text-shadow: 0 0 3px #000, 0 2px 5px #000, 0 0 18px rgba(0, 0, 0, 0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <p>Do not, my friends, become addicted to tokens.</p>
+    <script type="module">
+      import '@fontsource/ibm-plex-mono/500.css';
+      await document.fonts.load('500 34px "IBM Plex Mono"');
+      window.ready = true;
+    </script>
+  </body>
+</html>

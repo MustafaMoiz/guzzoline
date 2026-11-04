@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Guzzoline: your Claude usage on your Touch Bar</title>
+    <meta name="description" content="Your Claude usage on your MacBook Pro's Touch Bar, with a Clawd for every Claude Code session. Free and open source." />
+    <meta name="theme-color" content="#c96a24" />
+    <link rel="canonical" href="https://getguzzoline.netlify.app/" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- The card a link to the page shows (on X, iMessage, Slack and the like). The picture is
+         card.html, rendered to public/card.png. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Guzzoline" />
+    <meta property="og:url" content="https://getguzzoline.netlify.app/" />
+    <meta property="og:title" content="Guzzoline: your Claude usage on your Touch Bar" />
+    <meta property="og:description" content="Your Claude usage on your MacBook Pro's Touch Bar, with a Clawd for every Claude Code session. Free and open source." />
+    <meta property="og:image" content="https://getguzzoline.netlify.app/card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Guzzoline: a clay Clawd warlord at two levers, above a Touch Bar showing Claude usage and four sessions" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preload" as="image" href="./assets/still.jpg" />
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <!-- Spray paint on a fuel drum: speckled through, edges a little ragged. -->
+      <filter id="worn">
+        <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="4" result="grit" />
+        <feColorMatrix in="grit" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -3.4 2.55" result="holes" />
+        <feComposite in="SourceGraphic" in2="holes" operator="in" result="speckled" />
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="9" result="warp" />
+        <feDisplacementMap in="speckled" in2="warp" scale="2.5" />
+      </filter>
+    </svg>
+
+    <main>
+      <section class="hero">
+        <h1>Guzzoline</h1>
+        <p class="sub">Your Claude usage, on your Touch Bar.</p>
+        <div class="cinema">
+          <div class="frame">
+            <img class="still" src="./assets/still.jpg" alt="A clay Clawd warlord at two levers on a clay citadel" />
+            <video class="film" src="./assets/film.mp4" playsinline preload="auto" aria-hidden="true"></video>
+          </div>
+          <div class="press" aria-hidden="true"></div>
+          <p class="subtitle" aria-live="polite">Do not, my friends, become addicted to tokens.</p>
+        </div>
+        <button type="button" class="pump">Hold for guzzoline</button>
+
+        <!-- Part of the first screen: on a phone, the screen is laid out around it. -->
+        <div class="get" role="group" aria-label="Get Guzzoline">
+          <div class="cmd">
+            <code>git clone https://github.com/MustafaMoiz/guzzoline.git &amp;&amp; cd guzzoline &amp;&amp; ./install.sh</code>
+            <button type="button" class="copy">Copy</button>
+          </div>
+          <a class="repo" href="https://github.com/MustafaMoiz/guzzoline">
+            <span>github.com/MustafaMoiz/guzzoline</span>
+            <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 9 9 3M4 3h5v5" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+          </a>
+        </div>
+      </section>
+
+      <section class="themes" aria-label="Five styles">
+        <div class="stage">
+          <p class="cue">Scroll to see all five styles</p>
+          <div class="window">
+            <div class="deck">
+              <div class="key esc" aria-hidden="true">esc</div>
+              <div class="bar" role="img" aria-label="A Touch Bar showing Claude usage and four Claude Code sessions"></div>
+              <div class="key touchid" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div class="ticks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </section>
+
+      <section class="features" aria-labelledby="features-title">
+        <h2 id="features-title" class="hidden-title">What it does</h2>
+        <div class="tour" role="region" aria-label="The Guzzoline panel, under Clawd in the menu bar"></div>
+        <p class="tour-caption" aria-live="polite"></p>
+        <ul>
+          <li>
+            <h3>Usage</h3>
+            <p>How much of your session and your week you’ve used, and when each resets. It also shows if you’re using them up too fast.</p>
+          </li>
+          <li>
+            <h3>Sessions</h3>
+            <p>
+              Each Claude Code session gets a Clawd. Its color tells you what the session is doing:
+              <span class="state"><i class="working"></i>working,</span>
+              <span class="state"><i class="asking"></i>waiting for you,</span>
+              <span class="state"><i class="done"></i>done,</span> or
+              <span class="state"><i class="idle"></i>done a while ago.</span>
+            </p>
+          </li>
+          <li>
+            <h3>Sound</h3>
+            <p>Your Mac plays a sound when a session finishes or needs you. So you can walk away while Claude works.</p>
+          </li>
+          <li>
+            <h3>Talking</h3>
+            <p>Hold a Clawd, say what you want, and let go. Guzzoline types it into that session and sends it.</p>
+          </li>
+          <li>
+            <h3>Lid shut</h3>
+            <p>If you like, your Mac stays awake while a session works, even with the lid closed. So you can close it and go.</p>
+          </li>
+          <li>
+            <h3>Privacy</h3>
+            <p>Guzzoline reads your usage and the titles of your sessions. It never reads your conversations.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section class="agent" aria-labelledby="agent-title">
+        <h2 id="agent-title">Or let Claude Code install it</h2>
+        <p class="lead">Paste this into Claude Code on your Mac, and it will do the rest.</p>
+        <div class="cmd ask">
+          <code>Install Guzzoline on this Mac: github.com/MustafaMoiz/guzzoline</code>
+          <button type="button" class="copy">Copy</button>
+        </div>
+      </section>
+    </main>
+
+    <footer>Guzzoline isn’t made by Anthropic. Clawd is Anthropic’s. MIT licensed.</footer>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
