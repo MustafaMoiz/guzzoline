@@ -1,0 +1,120 @@
+:root { color-scheme: dark; }
+:focus, :focus-visible { outline: none !important; }
+
+html, body { margin: 0; min-height: 100%; background: #2a2926; }
+body { font: 13px/1.3 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+
+/* The desk: the panel hangs from a slice of the menu bar. */
+.desk { display: flex; justify-content: center; padding: 32px 16px 80px; }
+.option { width: 776px; }
+.menubar { display: flex; justify-content: flex-end; align-items: center; gap: 18px; height: 24px; padding: 0 12px; background: rgba(234, 231, 226, .9); color: #161513; font-size: 13px; }
+.menubar .icon { display: flex; padding: 3px 6px; background: rgba(0, 0, 0, .1); }
+
+/* Two kinds of type in the whole panel: the headings, and everything else. */
+.panel {
+  --pad: 16px;
+  position: relative; box-sizing: border-box; width: 760px; margin: 5px 6px 0 auto; padding: 2px 0 6px;
+  color: var(--ink); background: var(--bg); border: 1px solid var(--edge); border-radius: 2px;
+  box-shadow: 0 16px 30px -16px rgba(0, 0, 0, .85);
+  font: var(--title); cursor: default; user-select: none; -webkit-user-select: none;
+}
+:where(.panel button) { margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: inherit; cursor: default; }
+:where(.panel ul) { margin: 0; padding: 0; list-style: none; } /* resets that yield to every rule below */
+
+/* Two columns, the themes across the bottom, and then the app's own settings. */
+.cols { display: grid; grid-template-columns: 1fr 1fr; }
+.cols > .col { padding-bottom: 14px; }
+.cols > .col + .col { box-shadow: inset 1px 0 0 var(--frame); }
+.band { padding-bottom: 14px; box-shadow: inset 0 1px 0 var(--frame); }
+
+/* A section: its name, and a line in the theme's texture. Everything has a fixed height, so
+   no theme's type can change the panel's size. */
+.head { box-sizing: border-box; display: flex; align-items: center; gap: 10px; height: 22px; margin: 12px 0 4px; padding: 0 var(--pad); }
+.panel h3 { margin: 0; font: var(--head); letter-spacing: var(--head-track, .12em); text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.head .lead { flex: 1; height: var(--lead-h, 1px); background: var(--lead); }
+
+/* Sessions: a click shows or hides one. Its Clawd, at the end, says which, and what it's doing. */
+.sessions { padding: 0 6px; }
+.session { display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; column-gap: 12px; height: 30px; padding: 0 10px; }
+.session .title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.session canvas { width: 18px; height: 14px; image-rendering: pixelated; }
+.session:not(.on) .title { color: var(--muted); }
+
+/* Radios choose one; checkboxes turn a setting on. The labels stay as they are. */
+.showing { padding: 0 6px; }
+.choice, .toggle { display: flex; align-items: center; gap: 10px; height: 26px; padding: 0 10px; white-space: nowrap; }
+:is(.session, .choice, .toggle):hover { background: var(--hover); }
+.radio, .toggle .check { flex: none; box-sizing: border-box; width: 11px; height: 11px; border: 1px solid var(--muted); }
+.radio { border-radius: 50%; }
+.choice.on .radio { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2.5px var(--bg); }
+.toggle .check { position: relative; }
+.toggle.on .check { border-color: var(--accent); background: var(--accent); }
+.toggle.on .check::after { content: ''; position: absolute; top: 0; left: 3px; width: 3px; height: 6px; border: solid var(--bg); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+
+/* Sound: the speaker turns it on and off; a square for each of the Mac's sounds. */
+.sound { box-sizing: border-box; display: flex; align-items: center; gap: 12px; height: 26px; padding: 0 var(--pad); }
+.mute { display: flex; color: var(--ink); }
+.sound.off .mute { color: var(--muted); }
+.tones { display: flex; gap: 6px; padding: 0; }
+.tone { box-sizing: border-box; width: 14px; height: 14px; border: 1px solid var(--muted); }
+.tone:hover { border-color: var(--ink); }
+.tone.on { border-color: var(--accent); background: var(--accent); }
+.sound.off .tones { opacity: .35; }
+
+/* Themes: the Touch Bar as it would look in each, framed apart; the one in use framed in its ink. */
+.themes { display: grid; gap: 6px; padding: 2px var(--pad) 0; }
+.theme { padding: 5px; background: var(--card); box-shadow: inset 0 0 0 1px var(--frame); }
+.theme .stage { display: grid; background: #000; }
+.theme .stage canvas { grid-area: 1 / 1; display: block; width: 100%; height: auto; transition: opacity .35s ease-out; }
+.theme .stage canvas.arriving { opacity: 0; }
+.theme:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.theme.on { box-shadow: inset 0 0 0 1px var(--accent); }
+
+.foot { display: flex; align-items: center; gap: 8px; padding: 8px 6px 2px; box-shadow: inset 0 1px 0 var(--frame); }
+.foot .spring { flex: 1; }
+.quit { display: flex; padding: 5px 10px; color: var(--muted); }
+.quit:hover { color: var(--ink); }
+
+/* The skins: each theme's black, its type, and its texture in the line beside each heading. */
+[data-skin=walk] {
+  --bg: #000; --ink: #f2efe9; --muted: #8b877f; --ghost: #3a3835; --edge: #262422; --frame: #262422; --hover: #121110;
+  --card: #0d0c0b; --accent: #f2efe9;
+  --lead: repeating-linear-gradient(90deg, #4d4a45 0 2px, transparent 2px 8px); --lead-h: 2px;
+  --title: 500 12.5px/1.2 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; --head: 500 9.5px/1 'IBM Plex Mono', monospace;
+}
+
+[data-skin=phosphor] {
+  --bg: #050302; --ink: #ffa76d; --muted: #9a5c3b; --ghost: #3c2415; --edge: #2a190e; --frame: #2c1a0f; --hover: #140b06;
+  --card: #0e0805; --accent: #ffa76d;
+  --lead: repeating-linear-gradient(90deg, #3a2213 0 7px, transparent 7px 9px); --lead-h: 3px;
+  --title: 500 11.5px/1.2 'IBM Plex Mono', monospace; --head: 500 9.5px/1 'IBM Plex Mono', monospace;
+  text-shadow: 0 0 7px rgba(255, 120, 50, .5);
+}
+[data-skin=phosphor] :is(.choice.on .radio, .toggle.on .check, .tone.on) { filter: drop-shadow(0 0 4px rgba(255, 120, 50, .55)); }
+
+[data-skin=engraving] {
+  --bg: #040404; --ink: #f3f0ea; --muted: #8e8b85; --ghost: #3e3c38; --edge: #262626; --frame: #2a2a2a; --hover: #111;
+  --card: #0d0d0d; --accent: #f3f0ea;
+  --lead: repeating-linear-gradient(135deg, #6f6c67 0 1px, transparent 1px 4px); --lead-h: 6px;
+  --title: 600 15px/1.1 'Barlow Condensed', sans-serif; --head: 500 11px/1 'Barlow Condensed', sans-serif; --head-track: .16em;
+}
+
+[data-skin=marquee] {
+  --bg: #060504; --ink: #ffe4c8; --muted: #93806d; --ghost: #3f352c; --edge: #2a231d; --frame: #2a231d; --hover: #100d0b;
+  --card: #0f0c0a; --accent: #ffe4c8;
+  --lead: radial-gradient(circle, #6e5d4d 0.9px, transparent 1.15px) 0 50% / 5px 3px repeat-x; --lead-h: 3px;
+  --title: 500 11.5px/1.2 'IBM Plex Mono', monospace; --head: 500 10.5px/1 'IBM Plex Mono', monospace;
+  text-shadow: 0 0 5px rgba(255, 205, 150, .4);
+}
+/* Headings in lamps; everything else plain, to be read. */
+[data-skin=marquee] h3 { -webkit-mask: radial-gradient(circle, #000 .8px, transparent 1.05px) 0 0 / 2px 2px; color: var(--ink); }
+
+[data-skin=incense] {
+  --bg: #0b0a09; --ink: #ded7cc; --muted: #766f65; --ghost: #36322e; --edge: #24211e; --frame: #26231f; --hover: #13110f;
+  --card: #12100e; --accent: #ff7a3d;
+  --lead: #2c2926; --lead-h: 1px;
+  --title: 400 12.5px/1.2 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; --head: 400 9.5px/1 'IBM Plex Mono', monospace;
+}
+/* An ember where each line ends, and in whatever is picked. */
+[data-skin=incense] .head .lead { position: relative; }
+[data-skin=incense] .head .lead::after { content: ''; position: absolute; top: -1px; right: 0; width: 3px; height: 3px; border-radius: 50%; background: #ff7a3d; box-shadow: 0 0 6px 1px rgba(255, 110, 50, .7); }

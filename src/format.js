@@ -22,11 +22,11 @@ export function until(ms) {
 
 const timeParts = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 
-// { time: "4:10", period: "pm" } in the viewer's locale; period is '' on a 24-hour clock.
+// { time: "4:10", period: "PM" } in the viewer's locale; period is '' on a 24-hour clock.
 export function clock(ts) {
   const parts = timeParts.formatToParts(ts);
   const time = parts.filter((p) => p.type !== 'dayPeriod').map((p) => p.value).join('').trim();
-  const period = parts.find((p) => p.type === 'dayPeriod')?.value.toLowerCase().replace(/\./g, '') ?? '';
+  const period = parts.find((p) => p.type === 'dayPeriod')?.value.toUpperCase().replace(/\./g, '') ?? '';
   return { time, period };
 }
 

@@ -1,0 +1,25 @@
+#!/bin/sh
+# Guzzoline's helper, installed once (with your password) to keep the Mac awake with the lid
+# shut while an agent works. macOS sleeps when the lid closes whatever apps ask, unless its
+# SleepDisabled setting is on, and only root can change that. launchd runs this as root whenever
+# Guzzoline changes its request, and once a minute; all it does is keep SleepDisabled in step:
+#   on, only while the request says "on", Guzzoline is running, and the Mac is plugged in or
+#   has 20% of its battery or more;
+#   off in every other case, including any doubt.
+# To remove it: Guzzoline's menu with Option held, or the commands in the README.
+
+REQUEST=/Users/Shared/Guzzoline/awake
+
+want=0
+if [ "$(/bin/cat "$REQUEST" 2>/dev/null)" = "on" ] && /usr/bin/pgrep -x Guzzoline >/dev/null; then
+  battery=$(/usr/bin/pmset -g batt)
+  level=$(printf '%s\n' "$battery" | /usr/bin/grep -Eo '[0-9]+%' | /usr/bin/head -n 1 | /usr/bin/tr -d '%')
+  if printf '%s\n' "$battery" | /usr/bin/grep -q "'AC Power'" || [ "${level:-0}" -ge 20 ]; then
+    want=1
+  fi
+fi
+
+now=$(/usr/bin/pmset -g | /usr/bin/awk '/SleepDisabled/ { print $2 }')
+if [ "$now" != "$want" ]; then
+  /usr/bin/pmset -a disablesleep "$want"
+fi

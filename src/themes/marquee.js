@@ -6,14 +6,19 @@ import { DAY } from '../state.js';
 
 // An LED sign, 401 × 12 dots at a 5 px pitch. Every frame the content is laid out in dots, and
 // a shader draws each dot as a lamp with a halo. Now and then a sentence crawls across it.
-const COLS = 401;
 const ROWS = 12;
 const PITCH = 5;
 const CRAWL_SPEED = 46; // dots a second
 const CRAWL_EVERY = 45; // seconds
 
-const BAR = { x: 23, w: 184, top: 3, rows: 6 };
-const WEEK = { x: 262, w: 77, top: 4, rows: 4 };
+// Laid out in dots from the sign's right edge: the second limit's figures end there, its
+// meter sits before them, then the first limit's figures; the first meter takes the rest.
+function layout(cols) {
+  const right = cols - 3;
+  const week = { x: right - 54 - 77, w: 77, top: 4, rows: 4 };
+  const text = week.x - 64;
+  return { right, text, bar: { x: 23, w: text - 6 - 23, top: 3, rows: 6 }, week };
+}
 
 const vertexShader = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }';
 const fragmentShader = /* glsl */ `
@@ -65,7 +70,7 @@ function page(cols) {
 
 const timeText = (ts) => {
   const { time, period } = clock(ts);
-  return period ? `${time}${period[0]}` : time;
+  return period ? `${time} ${period}` : time;
 };
 
 function resetShort(win) {
@@ -91,6 +96,8 @@ export default {
   note: 'An LED sign. Now and then it spells the numbers out (click it); lamps chase while Claude works.',
 
   create(canvas, { width, height }) {
+    const COLS = Math.floor(width / PITCH);
+    const { right: RIGHT, text: TEXT, bar: BAR, week: WEEK } = layout(COLS);
     const renderer = new THREE.WebGLRenderer({ canvas });
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
@@ -154,13 +161,20 @@ export default {
       meter(dash, BAR, used ? s.used : s.left, s.active ? (used ? s.elapsed : 1 - s.elapsed) : null,
         v.working && !asleep, t, s.kind === 'week' ? 7 : 0);
       const blinkOff = Math.floor(t * 1.6) % 2 === 1;
-      let x = text(dash, `${pct(used ? s.used : s.left)}%`, 213, 2);
+      let x = text(dash, `${pct(used ? s.used : s.left)}%`, TEXT, 2);
       if (!(s.status === 'out' && blinkOff)) text(dash, resetShort(s).toUpperCase(), x + 4, 2, 0.6);
       if (!w) return;
 
-      meter(dash, WEEK, used ? w.used : w.left, w.active ? (used ? w.elapsed : 1 - w.elapsed) : null, false, t, 7);
-      x = text(dash, `${pct(used ? w.used : w.left)}%`, 345, 2);
-      if (!(w.status === 'out' && blinkOff)) text(dash, resetShort(w).toUpperCase(), x + 4, 2, 0.6);
+      const weekNumber = `${pct(used ? w.used : w.left)}%`;
+      const weekReset = resetShort(w).toUpperCase();
+      // The figures need more room when the week resets within the day and shows a time; the
+      // meter makes it, rather than being written over.
+      const figures = textWidth(weekNumber) + 5 + textWidth(weekReset);
+      const meterBox = { ...WEEK, w: Math.max(20, Math.min(WEEK.w, RIGHT - figures - 6 - WEEK.x)) };
+      meter(dash, meterBox, used ? w.used : w.left, w.active ? (used ? w.elapsed : 1 - w.elapsed) : null, false, t, 7);
+      // A text's end is a dot of spacing past its last glyph, and the reset starts 4 dots after.
+      x = text(dash, weekNumber, RIGHT - (textWidth(weekNumber) + 5 + textWidth(weekReset)), 2);
+      if (!(w.status === 'out' && blinkOff)) text(dash, weekReset, x + 4, 2, 0.6);
     }
 
     function show(at) {

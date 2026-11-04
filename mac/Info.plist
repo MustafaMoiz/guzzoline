@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>Barometer</string>
+  <string>Guzzoline</string>
   <key>CFBundleDisplayName</key>
-  <string>Barometer</string>
+  <string>Guzzoline</string>
   <key>CFBundleIdentifier</key>
-  <string>app.barometer.touchbar</string>
+  <string>app.guzzoline</string>
   <key>CFBundleExecutable</key>
-  <string>Barometer</string>
+  <string>Guzzoline</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

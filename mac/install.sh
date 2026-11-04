@@ -5,8 +5,10 @@
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p ~/Applications
-pkill -x Barometer 2>/dev/null || true
-rm -rf ~/Applications/Barometer.app
-cp -R build/Barometer.app ~/Applications/
-open ~/Applications/Barometer.app --args "$@"
-echo "Installed ~/Applications/Barometer.app"
+pkill -x Guzzoline 2>/dev/null || true
+# Opening it again before the old one has quit fails, so wait for it (up to five seconds).
+for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x Guzzoline >/dev/null || break; sleep 0.5; done
+rm -rf ~/Applications/Guzzoline.app
+cp -R build/Guzzoline.app ~/Applications/
+open ~/Applications/Guzzoline.app --args "$@"
+echo "Installed ~/Applications/Guzzoline.app"

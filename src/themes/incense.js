@@ -5,10 +5,15 @@ import { pct, resetText } from '../format.js';
 // An incense clock: sticks laid on an ash bed, burning toward the mascot. Ash is what's spent,
 // the ember is now, smoke rises off it. Marks under the bed are hours, and days for the week.
 const BED = 44; // y of the ash bed, from the top
-const STICKS = [
-  { x0: 46, x1: 1236, thick: 3 },
-  { x0: 1512, x1: 1852, thick: 2 },
-];
+// Laid out from the bar's width: the second limit's stick and figures at the right edge, the
+// first limit's figures and Clawd before them, and the first stick takes the rest.
+function layout(width) {
+  const weekX1 = width - 156;
+  const weekX0 = weekX1 - Math.round(width * 0.17);
+  const text = weekX0 - 208;
+  const x1 = text - 68;
+  return { text, clawd: x1 + 16, right: width - 18, sticks: [{ x0: 46, x1, thick: 3 }, { x0: weekX0, x1: weekX1, thick: 2 }] };
+}
 const INK = '#ece8e0';
 const MUTED = '#8b877f';
 
@@ -108,7 +113,8 @@ export default {
     const embers = particles(2, '#ff7a3c', 3.2, THREE.AdditiveBlending);
     scene.add(smoke.points, embers.points, sparks.points);
 
-    const state = STICKS.map((s, i) => ({ ...s, breaks: ashBreaks(s.x1 - s.x0, i * 97), tip: s.x0, emit: 0 }));
+    const L = layout(width);
+    const state = L.sticks.map((s, i) => ({ ...s, breaks: ashBreaks(s.x1 - s.x0, i * 97), tip: s.x0, emit: 0 }));
 
     function drawStick(st, burnt, lit, t) {
       const y = BED - st.thick;
@@ -234,7 +240,7 @@ export default {
 
         // Clawd sits at the end of the session's stick, eyes closed unless Claude is working.
         const grid = animate(t, { asleep: asleep || !v.working });
-        drawClawd(ctx, grid, 1252, BED - 20, 2, CLAWD);
+        drawClawd(ctx, grid, L.clawd, BED - 20, 2, CLAWD);
 
         // Figures.
         const s = v.primary;
@@ -256,8 +262,8 @@ export default {
             cx += widths[i] + gap;
           });
         };
-        figures(s, 1304);
-        if (w) figures(w, null, 1990);
+        figures(s, L.text);
+        if (w) figures(w, null, L.right);
 
         flat.needsUpdate = true;
         renderer.render(scene, camera);

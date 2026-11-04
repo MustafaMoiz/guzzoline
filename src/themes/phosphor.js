@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { animate } from '../clawd.js';
-import { draw as drawText } from '../pixelfont.js';
+import { draw as drawText, width as textWidth } from '../pixelfont.js';
 import { approach } from '../draw.js';
 import { clock, pct, weekday } from '../format.js';
 import { DAY } from '../state.js';
@@ -10,8 +10,23 @@ import { DAY } from '../state.js';
 const GHOST = 0.016;
 const LABEL = 0.62;
 
-const SEGMENTS = { x: 138, y: 18, n: 54, w: 13, gap: 4, h: 24, skew: 4 };
-const WEEK = { x: 1356, y: 21, groups: 7, per: 4, w: 9, gap: 3, groupGap: 9, h: 18, skew: 3 };
+const SEGMENTS = { x: 138, y: 18, w: 13, gap: 4, h: 24, skew: 4 };
+const WEEK = { y: 21, groups: 7, per: 4, w: 9, gap: 3, groupGap: 9, h: 18, skew: 3 };
+const WEEK_LEN = WEEK.groups * WEEK.per * (WEEK.w + WEEK.gap) + (WEEK.groups - 1) * (WEEK.groupGap - WEEK.gap) - WEEK.gap;
+
+// Laid out from the bar's right edge, x being where each part ends: the second limit's day,
+// number and segments, its label, the reset's clock, the first number; the first limit's
+// segments fill what's left.
+function layout(width) {
+  const right = width - 24;
+  const weekDigits = right - 72;
+  const weekStart = weekDigits - 81 - 24 - WEEK_LEN;
+  const weekLabel = weekStart - 38;
+  const minutes = weekLabel - 52;
+  const digits = minutes - 110;
+  const n = Math.floor((digits - 100 - SEGMENTS.x + SEGMENTS.gap) / (SEGMENTS.w + SEGMENTS.gap));
+  return { right, weekDigits, weekStart, weekLabel, minutes, digits, n };
+}
 
 const DIGITS = {
   0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgecd', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg',
@@ -135,7 +150,8 @@ export default {
       fragmentShader,
     })));
 
-    const lit5 = new Float32Array(SEGMENTS.n);
+    const L = layout(width);
+    const lit5 = new Float32Array(L.n);
     const litW = new Float32Array(WEEK.groups * WEEK.per);
 
     // Lit segments ease toward their state: on quickly, off with a little afterglow.
@@ -178,27 +194,27 @@ export default {
         const segPitch = SEGMENTS.w + SEGMENTS.gap;
         if (s.active) {
           const pace = showUsed ? s.elapsed : 1 - s.elapsed;
-          const px = SEGMENTS.x + pace * SEGMENTS.n * segPitch - SEGMENTS.gap / 2;
+          const px = SEGMENTS.x + pace * L.n * segPitch - SEGMENTS.gap / 2;
           ctx.fillStyle = `rgb(${0.7 * 255},0,0)`;
           hexagon(ctx, [[px - 4, 51], [px + 4, 51], [px, 46]]);
         }
         const shown = showUsed ? s.used : s.left;
         const blink = Math.floor(t * 1.6) % 2 === 0;
-        number(ctx, pct(shown), 1156, 12, 20, 36, 4, 27, 3, 1);
-        label(ctx, '%', 1162, 34);
+        number(ctx, pct(shown), L.digits, 12, 20, 36, 4, 27, 3, 1);
+        label(ctx, '%', L.digits + 6, 34);
         // When it resets: a clock time (a weekday when that's days off), blinking like a VCR's
         // once the limit has run out.
         const resetLevel = s.status === 'out' && !blink ? GHOST : 1;
         const level = s.active ? resetLevel : GHOST;
         if (s.active && s.kind === 'week' && s.resetIn >= DAY) {
-          label(ctx, weekday(s.resetsAt).toUpperCase(), 1196, 23, level);
+          label(ctx, weekday(s.resetsAt).toUpperCase(), L.minutes - 70, 23, level);
         } else {
           const { time, period } = s.active ? clock(s.resetsAt) : { time: ':', period: '' };
           const [hh, mm] = time.split(':');
-          number(ctx, hh, 1222, 23, 13, 26, 3, 17, 2, level);
-          colon(ctx, 1226, 23, 26, level);
-          number(ctx, mm, 1266, 23, 13, 26, 3, 17, 2, level);
-          if (period) label(ctx, period.toUpperCase(), 1272, 22, level * 0.8, 1.4);
+          number(ctx, hh, L.minutes - 44, 23, 13, 26, 3, 17, 2, level);
+          colon(ctx, L.minutes - 40, 23, 26, level);
+          number(ctx, mm, L.minutes, 23, 13, 26, 3, 17, 2, level);
+          if (period) label(ctx, period.toUpperCase(), L.minutes + 6, 22, level * 0.8, 1.4);
         }
 
         if (!w) {
@@ -208,24 +224,23 @@ export default {
         }
 
         // The second limit, in seven groups of four.
-        label(ctx, w.short, 1318, 23);
+        label(ctx, w.short, L.weekLabel, 23);
         litW.forEach((level, i) => {
           const g = Math.floor(i / WEEK.per);
-          const x = WEEK.x + i * (WEEK.w + WEEK.gap) + g * (WEEK.groupGap - WEEK.gap);
+          const x = L.weekStart + i * (WEEK.w + WEEK.gap) + g * (WEEK.groupGap - WEEK.gap);
           bar(ctx, x, WEEK.y, WEEK.w, WEEK.h, WEEK.skew, level);
         });
-        const weekLen = WEEK.groups * WEEK.per * (WEEK.w + WEEK.gap) + (WEEK.groups - 1) * (WEEK.groupGap - WEEK.gap) - WEEK.gap;
         if (w.active) {
           const pace = showUsed ? w.elapsed : 1 - w.elapsed;
-          const px = WEEK.x + pace * weekLen;
+          const px = L.weekStart + pace * WEEK_LEN;
           ctx.fillStyle = `rgb(${0.7 * 255},0,0)`;
           hexagon(ctx, [[px - 4, 50], [px + 4, 50], [px, 45]]);
         }
-        number(ctx, pct(showUsed ? w.used : w.left), 1826, 12, 20, 36, 4, 27, 3, 1);
-        label(ctx, '%', 1832, 34);
+        number(ctx, pct(showUsed ? w.used : w.left), L.weekDigits, 12, 20, 36, 4, 27, 3, 1);
+        label(ctx, '%', L.weekDigits + 6, 34);
         const weekLevel = w.status === 'out' && !blink ? GHOST : 0.85;
         const day = w.resetIn != null && w.resetIn < DAY ? clock(w.resetsAt).time : weekday(w.resetsAt ?? v.now);
-        label(ctx, day.toUpperCase(), 1866, 23, weekLevel);
+        label(ctx, day.toUpperCase(), L.right - textWidth(day.toUpperCase()) * 2, 23, weekLevel);
 
         map.needsUpdate = true;
         renderer.render(scene, camera);

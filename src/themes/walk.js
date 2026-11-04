@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { CLAWD, PARTS, animate } from '../clawd.js';
+import { CLAWD, animate } from '../clawd.js';
+import { bodyMaterial, eyeMaterial, figure, lights } from '../voxel.js';
 import { Label } from '../text.js';
 import { approach, clamp, pixelCamera, rect } from '../draw.js';
 import { pct, resetText } from '../format.js';
@@ -9,73 +10,14 @@ const MUTED = '#8b877f';
 
 const U = 3; // one mascot unit, in pixels
 const GROUND = 17;
-const PATH = [34, 1222]; // where the session's walk starts and ends
-const NUM_X = 1262;
-const WEEK = [1496, 1790];
-const WEEK_NUM_X = 1822;
-
-// The mascot in voxels: a body block with recessed eyes, and arms and legs that move.
-function figure(bodyMaterial, eyeMaterial) {
-  const group = new THREE.Group();
-  const cube = new THREE.BoxGeometry(1, 1, 1);
-  const torso = new THREE.Group();
-  const back = new THREE.Mesh(new THREE.BoxGeometry(13, 8, 5), bodyMaterial);
-  back.position.set(0, 6, -0.5);
-  const front = new THREE.InstancedMesh(cube, bodyMaterial, 13 * 8);
-  const eyes = new THREE.InstancedMesh(cube, eyeMaterial, 16);
-  torso.add(back, front, eyes);
-  const arms = PARTS.arms.map(({ x, y }) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), bodyMaterial);
-    m.userData.base = new THREE.Vector3(x + 1 - 8.5, 10 - y - 1, 0);
-    torso.add(m);
-    return m;
-  });
-  const legs = PARTS.legs.map(({ x }) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 2), bodyMaterial);
-    m.userData.base = new THREE.Vector3(x + 0.5 - 8.5, 1, 0.5);
-    group.add(m);
-    return m;
-  });
-  group.add(torso);
-
-  const m4 = new THREE.Matrix4();
-  let shown = null;
-  // The face comes from the 2D pose: body cells are the front layer, gaps in it are eyes.
-  function face(grid) {
-    if (grid === shown) return;
-    shown = grid;
-    let n = 0;
-    let e = 0;
-    for (let r = 0; r < 8; r++) {
-      for (let c = 2; c <= 14; c++) {
-        const x = c + 0.5 - 8.5;
-        const y = 9.5 - r;
-        if (grid[r][c]) front.setMatrixAt(n++, m4.makeTranslation(x, y, 2.5));
-        else eyes.setMatrixAt(e++, m4.makeTranslation(x, y, 1.9));
-      }
-    }
-    front.count = n;
-    eyes.count = e;
-    front.instanceMatrix.needsUpdate = true;
-    eyes.instanceMatrix.needsUpdate = true;
-  }
-
-  function pose({ grid, phase, walking, squash }) {
-    face(grid);
-    const lift = walking ? Math.sin(phase) : 0;
-    legs.forEach((leg, i) => {
-      const up = i % 2 === 0 ? Math.max(0, lift) : Math.max(0, -lift);
-      leg.position.copy(leg.userData.base).add(new THREE.Vector3(0, up * 0.9, 0));
-    });
-    torso.position.y = walking ? Math.abs(lift) * 0.45 : 0;
-    torso.scale.y = squash;
-    arms.forEach((arm, i) => {
-      arm.position.copy(arm.userData.base);
-      arm.position.y += walking ? (i ? -lift : lift) * 0.45 : 0;
-    });
-  }
-
-  return { group, pose };
+// Laid out from the bar's width: the second limit's figures end at the right margin, its track
+// sits before them, then the first limit's figures, and the walk takes the rest.
+function layout(width) {
+  const right = width - 30;
+  const weekLen = Math.round(width * 0.15);
+  const week1 = right - 176;
+  const numX = week1 - weekLen - 90 - 200;
+  return { path: [34, numX - 40], numX, week: [week1 - weekLen, week1], right };
 }
 
 export default {
@@ -84,6 +26,7 @@ export default {
   note: 'Clawd walks the session. Behind it is spent, ahead is what’s left.',
 
   create(canvas, { width, height }) {
+    const { path: PATH, numX: NUM_X, week: WEEK, right: RIGHT } = layout(width);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
@@ -92,17 +35,9 @@ export default {
     const scene = new THREE.Scene();
     const camera = pixelCamera(width, height);
 
-    scene.add(new THREE.HemisphereLight(0xfff4ec, 0x2a1c16, 1.6));
-    const key = new THREE.DirectionalLight(0xffffff, 3.2);
-    key.position.set(-0.5, 0.8, 1.6);
-    const rim = new THREE.DirectionalLight(0xffe2d2, 1.4);
-    rim.position.set(1, 0.4, -0.8);
-    scene.add(key, rim);
-
-    const body = new THREE.MeshStandardMaterial({
-      color: CLAWD, roughness: 0.6, metalness: 0, emissive: CLAWD, emissiveIntensity: 0.12,
-    });
-    const eye = new THREE.MeshBasicMaterial({ color: 0x0b0604 });
+    lights(scene);
+    const body = bodyMaterial();
+    const eye = eyeMaterial();
     const me = figure(body, eye);
     const rig = new THREE.Group();
     rig.add(me.group);
@@ -256,9 +191,13 @@ export default {
           weekNow.place(Math.round(WEEK[0] + w.elapsed * wl) - 1, wy + 3, 2, 5);
           const weekShown = v.show === 'used' ? w.used : w.left;
           const weekHot = w.status === 'low' || w.status === 'out';
-          weekNum.set(pct(weekShown), weekHot ? CLAWD : INK).at(WEEK_NUM_X, 21);
-          weekSign.set('%').at(WEEK_NUM_X + weekNum.width + 2, 21);
-          weekReset.set(resetText(w)).at(WEEK_NUM_X + weekNum.width + weekSign.width + 14, 21);
+          weekNum.set(pct(weekShown), weekHot ? CLAWD : INK);
+          weekSign.set('%');
+          weekReset.set(resetText(w));
+          const weekX = RIGHT - (weekNum.width + 2 + weekSign.width + 14 + weekReset.width);
+          weekNum.at(weekX, 21);
+          weekSign.at(weekX + weekNum.width + 2, 21);
+          weekReset.at(weekX + weekNum.width + 2 + weekSign.width + 14, 21);
         }
 
         renderer.render(scene, camera);

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Barometer</title>
+    <title>Guzzoline</title>
   </head>
   <body>
     <header class="controls">
@@ -14,6 +14,11 @@
           <div class="group joined" role="group" aria-label="Numbers show">
             <button type="button" data-show="left" aria-pressed="true">Left</button>
             <button type="button" data-show="used" aria-pressed="false">Used</button>
+          </div>
+          <div class="group joined" role="group" aria-label="Sessions">
+            <button type="button" data-sessions="none" aria-pressed="true">No sessions</button>
+            <button type="button" data-sessions="sample" aria-pressed="false">Sample</button>
+            <button type="button" data-sessions="yours" aria-pressed="false">Yours</button>
           </div>
           <button type="button" id="lapse" aria-pressed="false">Time-lapse</button>
         </div>

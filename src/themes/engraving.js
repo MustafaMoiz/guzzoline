@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import { CLAWD, animate, draw as drawClawd } from '../clawd.js';
-import { pct, until, clock, weekday } from '../format.js';
-import { DAY } from '../state.js';
+import { pct, resetText } from '../format.js';
 
 // Two scales stacked like a slide rule's. What's left of each window is a block cut in white
-// lines, as in a wood engraving; what's spent is cut away. The hand points at an even pace.
+// lines, as in a wood engraving; what's spent is cut away. The pointer marks an even pace.
+// Each limit's name, number and reset sit level with its scale, to the right.
 const INK = '#ece8e0';
 const MUTED = '#8e8a82';
-const X0 = 158;
-const X1 = 1650;
-const UPPER = { top: 3, bottom: 16, base: 17 }; // y from the top, in pixels
-const LOWER = { top: 43, bottom: 56, base: 42 };
+const X0 = 96;
+const UPPER = { top: 3, bottom: 16, base: 17, baseline: 22 }; // y from the top, in pixels
+const LOWER = { top: 43, bottom: 56, base: 42, baseline: 55 };
+
+const FACE = { family: '"Barlow Condensed"', weight: 600 };
 
 const vertexShader = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }';
 const fragmentShader = /* glsl */ `
@@ -50,22 +51,38 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-const timeText = (ts) => {
-  const { time, period } = clock(ts);
-  return `${time.replace(':', '·')}${period ? ` ${period}` : ''}`;
-};
-
-function resetPhrase(win) {
-  if (!win.active) return '';
-  if (win.status === 'out') return `in ${until(win.resetIn)}`;
-  if (win.kind === 'session' || win.resetIn < DAY) return `till ${timeText(win.resetsAt)}`;
-  return `till ${weekday(win.resetsAt)}`;
+// Type sized by its capitals' height: the number's caps fill a scale's height, the name's and
+// reset's sit smaller on the same line.
+function typeset(ctx, face) {
+  const font = (px, weight = face.weight) => `${weight} ${px}px ${face.family}`;
+  ctx.font = font(100);
+  const cap = ctx.measureText('H').actualBoundingBoxAscent / 100;
+  const size = (capHeight) => Math.round(capHeight / cap);
+  const type = {
+    number: font(size(19)),
+    name: font(size(9)),
+    sign: font(size(11)),
+    reset: font(size(12.5), 500),
+  };
+  // The figures' column, measured for its widest contents, laid out from the right.
+  const measure = (f, text, spacing = '0px') => {
+    ctx.font = f;
+    ctx.letterSpacing = spacing;
+    const w = ctx.measureText(text).width;
+    ctx.letterSpacing = '0px';
+    return w;
+  };
+  const nameW = measure(type.name, 'SESSION', '1.5px');
+  const numberW = measure(type.number, '100');
+  const signW = measure(type.sign, '%');
+  const resetW = Math.max(measure(type.reset, 'in 1d 14h'), measure(type.reset, '12:59 am'));
+  return { type, measure, signW, column: nameW + 12 + numberW + 3 + signW + 10 + resetW };
 }
 
 export default {
   id: 'engraving',
   name: 'Engraving',
-  note: 'Two scales, like a slide rule. What’s left is cut in white lines; the hand points at an even pace.',
+  note: 'Two scales, like a slide rule. What’s left is cut in white lines; the pointer marks an even pace.',
 
   create(canvas, { width, height }) {
     const renderer = new THREE.WebGLRenderer({ canvas });
@@ -92,6 +109,9 @@ export default {
     scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader })));
 
     const chips = [];
+    const set = typeset(ctx, FACE);
+    // The scales end where the widest figures would begin, so they stay put as figures change.
+    const X1 = Math.round(width - 22 - set.column - 30);
 
     // Ticks along a baseline: `marks` is a list of [fraction, length].
     function scale(base, dir, marks) {
@@ -109,36 +129,51 @@ export default {
     function pointer(x, up) {
       const cx = Math.round(x) + 0.5;
       ctx.fillStyle = INK;
+      ctx.fillRect(cx - 0.5, 27, 1, 6);
+      ctx.beginPath();
       if (up) {
-        ctx.fillRect(cx - 0.5, 27, 1, 6);
-        ctx.beginPath();
         ctx.moveTo(cx, 23.5);
         ctx.lineTo(cx + 3, 28.5);
         ctx.lineTo(cx - 3, 28.5);
-        ctx.fill();
       } else {
-        ctx.fillRect(cx - 0.5, 27, 1, 6);
-        ctx.beginPath();
         ctx.moveTo(cx, 36.5);
         ctx.lineTo(cx + 3, 31.5);
         ctx.lineTo(cx - 3, 31.5);
-        ctx.fill();
       }
+      ctx.fill();
     }
 
-    function figures(win, show, baseline) {
-      const value = pct(show === 'used' ? win.used : win.left);
+    // The figures' columns, as wide as both rows need, flush with the bar's right edge.
+    function columns(rows) {
+      const { type, measure, signW } = set;
+      const name = Math.max(...rows.map((r) => measure(type.name, r.name, '1.5px')));
+      const number = Math.max(...rows.map((r) => measure(type.number, r.number)));
+      const reset = Math.max(...rows.map((r) => measure(type.reset, r.reset)));
+      const left = width - 22 - (name + 12 + number + 3 + signW + 10 + reset);
+      return { name: left, numberRight: left + name + 12 + number };
+    }
+
+    function figures(win, text, at, baseline) {
+      const { type } = set;
       const hot = win.status === 'low' || win.status === 'out';
-      ctx.font = '400 27px "IM Fell English"';
+      const numberRight = at.numberRight;
+      const col = at.name;
+      ctx.textAlign = 'left';
+      ctx.font = type.name;
+      ctx.letterSpacing = '1.5px';
+      ctx.fillStyle = MUTED;
+      ctx.fillText(text.name, col, baseline);
+      ctx.letterSpacing = '0px';
+      ctx.font = type.number;
       ctx.fillStyle = hot ? CLAWD : INK;
       ctx.textAlign = 'right';
-      ctx.fillText(value, 1728, baseline);
+      ctx.fillText(text.number, numberRight, baseline);
       ctx.textAlign = 'left';
-      ctx.font = '400 17px "IM Fell English"';
+      ctx.font = type.sign;
       ctx.fillStyle = MUTED;
-      ctx.fillText('%', 1731, baseline);
-      ctx.font = 'italic 400 19px "IM Fell English"';
-      ctx.fillText(resetPhrase(win), 1758, baseline);
+      ctx.fillText('%', numberRight + 3, baseline);
+      ctx.font = type.reset;
+      ctx.fillText(text.reset, numberRight + 3 + set.signW + 10, baseline);
     }
 
     return {
@@ -156,12 +191,6 @@ export default {
         // The maker's mark: the one thing in colour.
         const asleep = s.status === 'out' || w?.status === 'out';
         drawClawd(ctx, animate(t, { asleep }), 22, 15, 3);
-
-        ctx.font = '400 15px "IM Fell English SC"';
-        ctx.fillStyle = MUTED;
-        ctx.textAlign = 'left';
-        ctx.fillText(s.name, 84, 14);
-        if (w) ctx.fillText(w.name, 84, 55);
 
         // Hours and ten minutes on a session; days and quarter days on a week.
         const marks = (win) => {
@@ -196,8 +225,15 @@ export default {
         }
         ctx.globalAlpha = 1;
 
-        figures(s, v.show, 24);
-        if (w) figures(w, v.show, 54);
+        const words = (win) => ({
+          name: win.name.toUpperCase(),
+          number: pct(v.show === 'used' ? win.used : win.left),
+          reset: resetText(win),
+        });
+        const rows = [s, w].filter(Boolean).map(words);
+        const at = columns(rows);
+        figures(s, rows[0], at, UPPER.baseline);
+        if (w) figures(w, rows[1], at, LOWER.baseline);
 
         overlay.needsUpdate = true;
         renderer.render(scene, camera);
