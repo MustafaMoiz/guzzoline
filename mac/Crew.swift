@@ -2,7 +2,7 @@
 // each, in the order the sessions began, acting out its session and coloured by it. Red, walking,
 // while it works; amber, hopping and waving, while it waits on you; green for a while once it has
 // finished (cheering at first, or shaking its head if it failed); blue, dimmed and dozing, after
-// that. One under a finger stands on a lit line.
+// that. One under a finger stands on a lit line; one you're talking to holds a hand to its ear.
 
 import AppKit
 import CoreText
@@ -19,8 +19,9 @@ final class Crew {
   private static let light: [Session.State: Float] = [.asking: 1.1, .working: 1, .done: 1, .failed: 1, .idle: 0.55]
 
   static func width(_ count: Int) -> Int { count > 0 ? pad * 2 + min(count, Sessions.most) * slot - 12 : 0 }
-  // The Clawd at a point along the row, in pixels.
+  // The Clawd at a point along the row, in pixels, and the middle of the nth.
   static func slot(at x: CGFloat) -> Int { Int(floor((x - CGFloat(pad) + 6) / CGFloat(slot))) }
+  static func center(of i: Int) -> CGFloat { CGFloat(pad + i * slot + 25) }
 
   private let gpu: GPU
   private let cubes: MTLRenderPipelineState
@@ -30,6 +31,8 @@ final class Crew {
   private var scene: Voxel.Scene
   private var bodies = [SIMD4<Float>](repeating: .zero, count: Sessions.most) // linear, and lit; zero before the first frame
   var touched = -1
+  var hearing = -1 // the Clawd being spoken to, a hand to its ear, bobbing as you speak
+  var loudness: Float = 0
   private(set) var busy = false
   var layer: CALayer { gpu.layer }
 
@@ -83,20 +86,30 @@ final class Crew {
         squash = 0.95 + sin(t * 1.4 + seed) * 0.012 // breathing, too slight to need every frame
       }
     }
+
+    // Listening to you: facing you, a hand to its ear, lifting with your voice.
+    init(hearing loudness: Double) {
+      hop = loudness * 4
+      wave = 1
+      moving = true
+    }
   }
 
+  private var list: [Voxel.Cube] = [] // the frame's cubes, kept from one frame to the next
+
   func render(_ sessions: [Session], dt: Double, t: Double) {
-    var list: [Voxel.Cube] = []
+    list.removeAll(keepingCapacity: true)
     busy = false
     let now = Date().timeIntervalSince1970
     for (i, s) in sessions.prefix(Sessions.most).enumerated() {
-      let cx = Float(Crew.pad + i * Crew.slot + 25)
+      let cx = Float(Crew.center(of: i))
       let seed = Double(i) * 0.61
       // Each Clawd eases into its state's colour.
       var target = linear(Crew.colour[s.state] ?? 0xD77757) * (Crew.light[s.state] ?? 1)
       target.w = 1
       bodies[i] = bodies[i].w == 0 ? target : bodies[i] + (target - bodies[i]) * Float(1 - exp(-6 * dt))
-      let act = Act(s.state, t, seed, age: now - s.since)
+      let heard = i == hearing
+      let act = heard ? Act(hearing: Double(loudness)) : Act(s.state, t, seed, age: now - s.since)
       // Drawn every frame from just before a hop or a shake begins until it settles.
       busy = busy || act.moving || Act(s.state, t + 0.2, seed, age: now - s.since + 0.2).moving || simd_length(target - bodies[i]) > 0.005
       let grid = s.state == .idle ? Clawd.animate(t, working: false, asleep: true) : Clawd.animate(t + seed, working: false, asleep: false)
@@ -104,7 +117,7 @@ final class Crew {
       let rig = Voxel.translate(cx, Crew.feet + 1 + Float(act.hop), 0) * Voxel.scale(Crew.unit, Crew.unit, Crew.unit)
         * Voxel.rotation(x: 0.3, y: Float(act.yaw))
       Voxel.figure(rig, grid: grid, lift: Float(act.walking ? sin(act.phase) : 0), walking: act.walking, squash: Float(act.squash),
-                   wave: Float(act.wave), swing: Float(sin(t * 11 + seed)), cheer: Float(act.cheer),
+                   wave: Float(act.wave), swing: heard ? -0.5 : Float(sin(t * 11 + seed)), cheer: Float(act.cheer),
                    body: body, eye: Voxel.flat(0x0B0604), into: &list)
       // Under a finger, it stands on a lit line, behind its feet.
       if touched == i {
@@ -127,11 +140,11 @@ final class Crew {
   }
 }
 
-// The crew's view on the Touch Bar: where a finger is along it, in pixels from its left (nil
-// once the finger has slid off it), and whether it lifted on the row.
+// The crew's view on the Touch Bar: where a finger is along it, in pixels from its left (past
+// either end once it has slid off), where it lifted, and whether macOS cancelled the touch instead.
 final class CrewView: NSView {
   var onTouch: ((CGFloat?) -> Void)?
-  var onLift: ((Bool) -> Void)?
+  var onLift: ((CGFloat?, Bool) -> Void)?
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -142,20 +155,22 @@ final class CrewView: NSView {
 
   private func along(_ event: NSEvent) -> CGFloat? {
     guard let touch = event.touches(matching: .any, in: self).first else { return nil }
-    let x = touch.location(in: self).x
-    return x >= 0 && x <= bounds.width ? x * 2 : nil
+    return touch.location(in: self).x * 2
   }
 
   override func touchesBegan(with event: NSEvent) { onTouch?(along(event)) }
   override func touchesMoved(with event: NSEvent) { onTouch?(along(event)) }
-  override func touchesEnded(with event: NSEvent) { onLift?(along(event) != nil) }
-  override func touchesCancelled(with event: NSEvent) { onLift?(false) }
+  override func touchesEnded(with event: NSEvent) { onLift?(along(event), false) }
+  override func touchesCancelled(with event: NSEvent) { onLift?(along(event), true) }
 }
 
 // A session's title, and what it's doing, across the usage while a finger is on its Clawd, as
 // the gallery's .reading card sets them: the title in the system face, the state after it.
 final class ReadingView: NSView {
   private var session: Session?
+  // How far a hold has got, 0 to 1: a ring at the right fills around a microphone, and once it's
+  // full the Clawd listens. Not for one waiting on you, which is answered in Claude.
+  var hold = 0.0 { didSet { if hold != oldValue { needsDisplay = true } } }
 
   func show(_ s: Session) {
     if s != session {
@@ -179,9 +194,10 @@ final class ReadingView: NSView {
     let word = line(session.word, wordFont, 0x7F7B74)
     var title = line(session.title, titleFont, 0xE9E6E0)
     let left = size * 1.2, gap = size * 0.8
+    let ring: CGFloat = session.state == .asking ? 0 : 30
     let width = { (l: CTLine) in CGFloat(CTLineGetTypographicBounds(l, nil, nil, nil)) }
     // The title gives way to the state word, ending in an ellipsis when it must.
-    let room = bounds.width - left - gap - width(word) - left
+    let room = bounds.width - left - gap - width(word) - left - ring
     if width(title) > room, let cut = CTLineCreateTruncatedLine(title, Double(room), .end, line("…", titleFont, 0xE9E6E0)) {
       title = cut
     }
@@ -192,5 +208,25 @@ final class ReadingView: NSView {
     CTLineDraw(title, context)
     context.textPosition = CGPoint(x: left + width(title) + gap, y: baseline(wordFont))
     CTLineDraw(word, context)
+
+    guard hold > 0, ring > 0 else { return }
+    let alpha = CGFloat(min(1, hold * 5)) // a quick tap barely shows it
+    let c = CGPoint(x: bounds.width - 18, y: bounds.height / 2), r: CGFloat = 7
+    context.setLineWidth(1.5)
+    context.setStrokeColor(srgb(0x3A3835, alpha: alpha))
+    context.strokeEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+    context.setStrokeColor(srgb(0xE9E6E0, alpha: alpha))
+    context.setLineCap(.round)
+    context.addArc(center: c, radius: r, startAngle: .pi / 2, endAngle: .pi / 2 - 2 * .pi * CGFloat(hold), clockwise: true)
+    context.strokePath()
+    // The microphone: its head, the cradle under it, and the stem.
+    context.setFillColor(srgb(0xE9E6E0, alpha: alpha))
+    context.addPath(CGPath(roundedRect: CGRect(x: c.x - 1.5, y: c.y - 1, width: 3, height: 5.5), cornerWidth: 1.5, cornerHeight: 1.5, transform: nil))
+    context.fillPath()
+    context.setLineWidth(0.9)
+    context.addArc(center: CGPoint(x: c.x, y: c.y + 0.6), radius: 2.9, startAngle: .pi, endAngle: 0, clockwise: false)
+    context.move(to: CGPoint(x: c.x, y: c.y - 2.3))
+    context.addLine(to: CGPoint(x: c.x, y: c.y - 4))
+    context.strokePath()
   }
 }

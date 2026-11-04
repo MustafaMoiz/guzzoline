@@ -10,6 +10,10 @@ import simd
 final class WalkTheme: NativeTheme {
   private static let ink: UInt32 = 0xF2EFE9
   private static let muted: UInt32 = 0x8B877F
+  // The reflection's fade, made once, and the frame's cubes, kept from one frame to the next.
+  private static let fade = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+                                       colors: [srgb(0x000000, alpha: 0.15), srgb(0x000000, alpha: 1)] as CFArray, locations: [0, 1])!
+  private var list: [Voxel.Cube] = []
   private static let unit: Float = 3 // one mascot unit, in pixels
   private static let ground: CGFloat = 17 // the path's line, from the bottom
 
@@ -112,7 +116,7 @@ final class WalkTheme: NativeTheme {
     let squash = Float(asleep ? 0.95 + sin(t * 1.4) * 0.012 : 1)
     let lift = Float(walking ? sin(phase) : 0)
     let u = WalkTheme.unit, px = Float(x)
-    var list: [Voxel.Cube] = []
+    list.removeAll(keepingCapacity: true)
     let body = linear(0xD77757)
     Voxel.figure(Voxel.translate(px, Float(ground) + 1, 0) * Voxel.scale(u, u, u) * Voxel.rotation(x: 0.3, y: Float(yaw)),
                  grid: grid, lift: lift, walking: walking, squash: squash, body: body, eye: Voxel.flat(0x0B0604), into: &list)
@@ -163,8 +167,7 @@ final class WalkTheme: NativeTheme {
 
     // Over it: the fade on the reflection, the even-pace tick, sweat and sleep.
     above.clear()
-    let fade = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
-                          colors: [srgb(0x000000, alpha: 0.15), srgb(0x000000, alpha: 1)] as CFArray, locations: [0, 1])!
+    let fade = WalkTheme.fade
     above.context.saveGState()
     above.context.clip(to: CGRect(x: 0, y: CGFloat(barHeight) - (ground - 2), width: path.1 + 60, height: ground - 2))
     above.context.drawLinearGradient(fade, start: CGPoint(x: 0, y: CGFloat(barHeight) - (ground - 2)), end: CGPoint(x: 0, y: CGFloat(barHeight)), options: [])

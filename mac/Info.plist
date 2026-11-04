@@ -20,6 +20,10 @@
   <string>12.0</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Guzzoline listens only while you hold a Clawd on the Touch Bar, to send what you say to that session.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Guzzoline turns what you say into words for your Claude session, on this Mac where it can.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

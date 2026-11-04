@@ -1,16 +1,23 @@
 // Staying awake with the lid shut while an agent works, for when you close the lid on one and
 // go. macOS sleeps when the lid closes whatever apps ask, unless its SleepDisabled setting is
-// on, and only root can change that; so a small helper (mac/awake), installed once with your
-// password, keeps the setting in step with what this asks for. This asks while any session is
-// working or waiting on you, and stops two minutes after the last one finishes; the helper
+// on, and only root can change that; so a small helper (the script below), installed once with
+// your password, keeps the setting in step with what this asks for. This asks while any session
+// is working or waiting on you, and stops two minutes after the last one finishes; the helper
 // turns it off by itself if this quits or the battery runs low.
 
 import AppKit
 import IOKit
 
 final class Awake {
-  private static let request = "/Users/Shared/Guzzoline/awake"
   private static let daemon = "/Library/LaunchDaemons/app.guzzoline.awake.plist"
+  private static let helper = "/Library/PrivilegedHelperTools/app.guzzoline.awake"
+  // The request the helper reads lives in a folder only root can change, so no other account on
+  // the Mac can put something in its place. A helper installed before kept it in /Users/Shared;
+  // the request goes wherever the installed helper watches, so that one keeps working.
+  private static let folder = "/Library/Application Support/Guzzoline"
+  private static var request: String {
+    (NSDictionary(contentsOfFile: daemon)?["WatchPaths"] as? [String])?.first ?? folder + "/awake"
+  }
   private static let grace = 120.0 // seconds awake after the last session finishes
 
   var installed: Bool { FileManager.default.fileExists(atPath: Awake.daemon) }
@@ -56,8 +63,8 @@ final class Awake {
     asking = on
     // Written in place rather than replaced, so launchd's watch on the file sees it.
     if let handle = FileHandle(forWritingAtPath: Awake.request) {
-      handle.truncateFile(atOffset: 0)
-      handle.write(Data((on ? "on" : "off").utf8))
+      try? handle.truncate(atOffset: 0)
+      try? handle.write(contentsOf: Data((on ? "on" : "off").utf8))
       try? handle.close()
     }
     if installed { log("lid-shut awake: \(on ? "asked for" : "let go")") }
@@ -88,54 +95,120 @@ final class Awake {
     lidShut = shut
   }
 
-  // Installs the helper from this app's bundle, or removes it, as root: macOS asks for your
-  // password in its own prompt. Off the main thread, so the bar carries on while it asks.
+  // Installs the helper, or removes it, as root: macOS asks for your password in its own prompt.
+  // The helper's script and launchd's instructions are written from this app itself, not copied
+  // from files anyone could change. Root only ever touches folders that only root can change.
   func install(_ done: @escaping (Bool) -> Void) {
-    let source = Bundle.main.resourceURL!.appendingPathComponent("awake").path
     let user = NSUserName()
     run("""
       set -e
+      umask 022
       /bin/mkdir -p /Library/PrivilegedHelperTools
-      /usr/bin/install -m 755 -o root -g wheel \(quote(source + "/app.guzzoline.awake")) /Library/PrivilegedHelperTools/app.guzzoline.awake
-      /usr/bin/install -m 644 -o root -g wheel \(quote(source + "/app.guzzoline.awake.plist")) \(Awake.daemon)
-      /bin/mkdir -p /Users/Shared/Guzzoline
-      /usr/sbin/chown \(quote(user)) /Users/Shared/Guzzoline
-      /bin/chmod 755 /Users/Shared/Guzzoline
-      printf off > \(Awake.request)
-      /usr/sbin/chown \(quote(user)) \(Awake.request)
+      /bin/cat > \(Awake.helper).new <<'GUZZOLINE'
+      \(Awake.script)
+      GUZZOLINE
+      /usr/sbin/chown root:wheel \(Awake.helper).new
+      /bin/chmod 755 \(Awake.helper).new
+      /bin/mv -f \(Awake.helper).new \(Awake.helper)
+      /bin/cat > \(Awake.daemon).new <<'GUZZOLINE'
+      \(Awake.plist)
+      GUZZOLINE
+      /usr/sbin/chown root:wheel \(Awake.daemon).new
+      /bin/chmod 644 \(Awake.daemon).new
+      /bin/mv -f \(Awake.daemon).new \(Awake.daemon)
+      /usr/bin/install -d -o root -g wheel -m 755 \(quote(Awake.folder))
+      /usr/bin/install -o \(quote(user)) -g staff -m 644 /dev/null \(quote(Awake.folder + "/awake"))
       /bin/launchctl bootout system/app.guzzoline.awake 2>/dev/null || true
       /bin/launchctl bootstrap system \(Awake.daemon)
-      # The helper from before the app was renamed, if it's there.
-      /bin/launchctl bootout system/app.barometer.awake 2>/dev/null || true
-      /bin/rm -f /Library/LaunchDaemons/app.barometer.awake.plist /Library/PrivilegedHelperTools/app.barometer.awake
-      /bin/rm -rf /Users/Shared/Barometer
-      """, done)
+      """) { ok in
+      if ok { Awake.forgetSharedRequest() }
+      done(ok)
+    }
   }
 
   func uninstall(_ done: @escaping (Bool) -> Void) {
     asking = nil
     run("""
       /bin/launchctl bootout system/app.guzzoline.awake 2>/dev/null || true
-      /bin/rm -f \(Awake.daemon) /Library/PrivilegedHelperTools/app.guzzoline.awake
+      /bin/rm -f \(Awake.daemon) \(Awake.helper)
       /usr/bin/pmset -a disablesleep 0
-      /bin/rm -rf /Users/Shared/Guzzoline
-      """, done)
+      /bin/rm -rf \(quote(Awake.folder))
+      """) { ok in
+      if ok { Awake.forgetSharedRequest() }
+      done(ok)
+    }
   }
+
+  // An earlier helper's request, in /Users/Shared: removed as you, never as root, and only if
+  // it's your own folder.
+  private static func forgetSharedRequest() {
+    let old = "/Users/Shared/Guzzoline"
+    var info = stat()
+    guard lstat(old, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid() else { return }
+    try? FileManager.default.removeItem(atPath: old)
+  }
+
+  // What launchd runs as root: it keeps SleepDisabled in step with the request, on only while
+  // the request says "on", Guzzoline is running for the account that asked, and the Mac is
+  // plugged in or has 20% of its battery or more; off in every other case, including any doubt.
+  private static let script = #"""
+    #!/bin/sh
+    # Guzzoline's helper, keeping the Mac awake with the lid shut while an agent works. launchd
+    # runs it as root whenever Guzzoline changes its request, and once a minute. Remove it from
+    # Guzzoline's menu (right click), or with uninstall.sh.
+    REQUEST="/Library/Application Support/Guzzoline/awake"
+    want=0
+    owner=$(/usr/bin/stat -f %u "$REQUEST" 2>/dev/null)
+    if [ "$(/bin/cat "$REQUEST" 2>/dev/null)" = "on" ] && [ -n "$owner" ] && /usr/bin/pgrep -x -U "$owner" Guzzoline >/dev/null; then
+      battery=$(/usr/bin/pmset -g batt)
+      level=$(printf '%s\n' "$battery" | /usr/bin/grep -Eo '[0-9]+%' | /usr/bin/head -n 1 | /usr/bin/tr -d '%')
+      if printf '%s\n' "$battery" | /usr/bin/grep -q "'AC Power'" || [ "${level:-0}" -ge 20 ]; then
+        want=1
+      fi
+    fi
+    now=$(/usr/bin/pmset -g | /usr/bin/awk '/SleepDisabled/ { print $2 }')
+    if [ "$now" != "$want" ]; then
+      /usr/bin/pmset -a disablesleep "$want"
+    fi
+    """#
+
+  private static let plist = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>Label</key>
+      <string>app.guzzoline.awake</string>
+      <key>ProgramArguments</key>
+      <array>
+        <string>\(helper)</string>
+      </array>
+      <key>WatchPaths</key>
+      <array>
+        <string>\(folder)/awake</string>
+      </array>
+      <key>StartInterval</key>
+      <integer>60</integer>
+      <key>RunAtLoad</key>
+      <true/>
+    </dict>
+    </plist>
+    """
 
   private func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 
+  // On the main thread, which NSAppleScript needs, once the click that asked has been handled; the
+  // bar waits while macOS's password prompt is up, which names Guzzoline as the one asking.
   private func run(_ script: String, _ done: @escaping (Bool) -> Void) {
     // AppleScript's own escapes, line breaks included, so the shell gets exactly this script.
     let escaped = script.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
       .replacingOccurrences(of: "\n", with: "\\n")
     let source = "do shell script \"" + escaped + "\" with administrator privileges"
-    DispatchQueue.global(qos: .userInitiated).async {
+    DispatchQueue.main.async {
       var error: NSDictionary?
       NSAppleScript(source: source)?.executeAndReturnError(&error)
-      DispatchQueue.main.async {
-        if let error { log("lid-shut helper: \(error[NSAppleScript.errorMessage] ?? error)") }
-        done(error == nil)
-      }
+      if let error { log("lid-shut helper: \(error[NSAppleScript.errorMessage] ?? error)") }
+      done(error == nil)
     }
   }
 }
