@@ -158,11 +158,17 @@ export default {
       const grid = animate(t, { working: v.working && !asleep, asleep });
       grid.forEach((row, r) => row.forEach((on, c) => { if (on) dash.set(2 + c, 1 + r, 1, 1); }));
 
-      meter(dash, BAR, used ? s.used : s.left, s.active ? (used ? s.elapsed : 1 - s.elapsed) : null,
+      // A 12-hour time ("11:26 PM") makes the first limit's figures longer: like the week's, its
+      // meter makes the room, rather than the figures running into the week's meter.
+      const number = `${pct(used ? s.used : s.left)}%`;
+      const reset = resetShort(s).toUpperCase();
+      const textX = Math.min(TEXT, WEEK.x - 7 - (textWidth(number) + 5 + textWidth(reset)));
+      const barBox = { ...BAR, w: Math.max(20, Math.min(BAR.w, textX - 6 - BAR.x)) };
+      meter(dash, barBox, used ? s.used : s.left, s.active ? (used ? s.elapsed : 1 - s.elapsed) : null,
         v.working && !asleep, t, s.kind === 'week' ? 7 : 0);
       const blinkOff = Math.floor(t * 1.6) % 2 === 1;
-      let x = text(dash, `${pct(used ? s.used : s.left)}%`, TEXT, 2);
-      if (!(s.status === 'out' && blinkOff)) text(dash, resetShort(s).toUpperCase(), x + 4, 2, 0.6);
+      let x = text(dash, number, textX, 2);
+      if (!(s.status === 'out' && blinkOff)) text(dash, reset, x + 4, 2, 0.6);
       if (!w) return;
 
       const weekNumber = `${pct(used ? w.used : w.left)}%`;
@@ -197,6 +203,8 @@ export default {
 
     return {
       busy: false,
+      // As a tap on the sign does: the sentence crawls across now (as the app's tap()).
+      tap() { clicked = true; },
       render(v, dt, t) {
         dashboard(v, t);
         nextCrawl ??= t + 12;

@@ -151,11 +151,17 @@ final class MarqueeTheme: NativeTheme {
     for (r, row) in Clawd.animate(t, working: v.working && !asleep, asleep: asleep).enumerated() {
       for (c, on) in row.enumerated() where on != 0 { dash.set(2 + c, 1 + r, 1, 1) }
     }
-    meter(bar, v.showUsed ? s.used : s.left, s.active ? (v.showUsed ? s.elapsed : 1 - s.elapsed) : nil,
+    // A 12-hour time ("11:26 PM") makes the first limit's figures longer: like the week's, its
+    // meter makes the room, rather than the figures running into the week's meter.
+    let firstNumber = "\(pct(v.showUsed ? s.used : s.left))%"
+    let firstReset = resetShort(s).uppercased()
+    let figuresX = min(textX, week.x - 7 - (PixelFont.width(firstNumber) + 5 + PixelFont.width(firstReset)))
+    let barBox = Box(x: bar.x, w: max(20, min(bar.w, figuresX - 6 - bar.x)), top: bar.top, rows: bar.rows)
+    meter(barBox, v.showUsed ? s.used : s.left, s.active ? (v.showUsed ? s.elapsed : 1 - s.elapsed) : nil,
           v.working && !asleep, t, days: s.kind == "week" ? 7 : 0)
     let blinkOff = Int(floor(t * 1.6)) % 2 == 1
-    var x = text(dash, "\(pct(v.showUsed ? s.used : s.left))%", textX, 2)
-    if !(s.status == "out" && blinkOff) { text(dash, resetShort(s).uppercased(), x + 4, 2, 0.6) }
+    var x = text(dash, firstNumber, figuresX, 2)
+    if !(s.status == "out" && blinkOff) { text(dash, firstReset, x + 4, 2, 0.6) }
     guard let w else { return }
 
     let number = "\(pct(v.showUsed ? w.used : w.left))%"
