@@ -8,10 +8,13 @@
     "dev": "vite",
     "build": "vite build",
     "app": "sh mac/build.sh",
-    "install-app": "sh install.sh"
+    "install-app": "sh install.sh",
+    "build:site": "vite build --config vite.site.config.js",
+    "preview:site": "vite preview --config vite.site.config.js"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/big-shoulders-stencil-display": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "three": "^0.187.0"
   },

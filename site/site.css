@@ -1,0 +1,343 @@
+:root {
+  --ink: #1d0d05;
+  --cream: #fff0d6;
+  --cream-soft: rgba(255, 240, 214, 0.72);
+  --cream-faint: rgba(255, 240, 214, 0.2);
+  --amber: #ffb02e;
+  --glow: rgba(255, 176, 46, 0.85);
+  /* The film: as big as fits on one screen, between the name and the label under it. */
+  --film: min(1300px, 100vw, calc((100svh - 330px) * 1.75));
+  --film-ratio: 1344 / 768;
+  /* The five styles' stage, held in the middle of the screen, and how much scrolling each
+     style holds for. */
+  --stage: 56svh;
+  --step: 55svh;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+/* No scroll bar: the page scrolls, but nothing shows it. */
+html { background: #4a1f0c; scrollbar-width: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font: 400 13px/1.5 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  /* The film's sky at the top, burning down through its clay to rust. */
+  background: linear-gradient(#d2701f 0, #c4621d 18%, #a84f1b 42%, #7e3716 68%, #4a1f0c 100%);
+}
+/* Grit over the page, under everything on it. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.2;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.16  0 0 0 0 0.05  0 0 0 1.1 -0.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+main, footer { position: relative; z-index: 1; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--cream); outline-offset: 4px; }
+
+h1, h2, h3, .sub, .pump, .copy {
+  font-family: 'Big Shoulders Stencil Display', 'Impact', sans-serif;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+h2, h3 { text-wrap: balance; }
+.hidden-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The name, sprayed on, and what it is. */
+.hero { text-align: center; padding-top: clamp(48px, 7.5vh, 88px); }
+h1 {
+  margin: 0;
+  font-size: clamp(64px, 10.5vw, 160px);
+  line-height: 0.8;
+  letter-spacing: 0.02em;
+  filter: url(#worn);
+}
+.sub {
+  margin: 0.35em 0 0;
+  color: var(--cream);
+  font-size: clamp(18px, 2.3vw, 34px);
+  letter-spacing: 0.05em;
+  text-wrap: balance;
+}
+
+/* The film, with no frame: it dissolves into the page at every edge. */
+.cinema {
+  position: relative;
+  width: var(--film);
+  margin: -10px auto 0;
+  aspect-ratio: var(--film-ratio);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.frame {
+  --fade-x: 10%;
+  --fade-top: 9%;
+  --fade-bottom: 14%;
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade-x), #000 calc(100% - var(--fade-x)), transparent), linear-gradient(transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade-x), #000 calc(100% - var(--fade-x)), transparent), linear-gradient(transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+  mask-composite: intersect;
+}
+.frame img, .frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.frame video { opacity: 0; transition: opacity 0.12s; }
+.frame video.on { opacity: 1; }
+.frame video.done { opacity: 0; transition: opacity 0.9s ease-in; }
+/* Anywhere on the film works the levers. */
+.press { position: absolute; inset: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.subtitle {
+  position: absolute;
+  left: 50%;
+  bottom: 16%;
+  width: max-content;
+  max-width: 76%;
+  margin: 0;
+  transform: translateX(-50%);
+  color: #fff;
+  font: 500 clamp(13px, calc(var(--film) * 0.017), 19px)/1.3 'IBM Plex Mono', monospace;
+  text-shadow: 0 0 2px #000, 0 1px 3px #000, 0 0 12px rgba(0, 0, 0, 0.8);
+  text-wrap: balance;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.subtitle.on { opacity: 1; }
+
+/* Under the film, what to do: holding it works the levers too. */
+.pump {
+  margin: 2px 0 0;
+  padding: 13px 24px 12px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--cream);
+  font-size: 19px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  box-shadow: 0 10px 24px rgba(40, 10, 0, 0.3);
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: opacity 0.3s, transform 0.1s;
+}
+.pump:active { transform: translateY(1px); }
+.pump.gone { opacity: 0.35; }
+
+/* Getting it: one line to paste (on a phone, the repository to open later). */
+.get { max-width: 900px; margin: clamp(40px, 8vh, 80px) auto 0; padding: 0 16px; }
+.cmd { display: flex; align-items: stretch; background: var(--ink); color: var(--cream); border-radius: 6px; overflow: hidden; box-shadow: 0 18px 40px rgba(30, 8, 0, 0.45); }
+.cmd code { flex: 1; min-width: 0; padding: 17px 20px; font: 400 13px/1.4 'IBM Plex Mono', monospace; white-space: nowrap; overflow-x: auto; scrollbar-width: none; text-align: left; }
+.cmd code::-webkit-scrollbar { display: none; }
+.copy { flex: none; padding: 0 22px; background: var(--cream); color: var(--ink); font-size: 20px; letter-spacing: 0.08em; transition: background 0.2s, color 0.2s; }
+.copy:hover { background: #fff; }
+.copy.copied { background: var(--amber); }
+.repo { display: none; }
+
+/* The five styles: the Touch Bar stays put while you scroll past, changing style. */
+.themes { position: relative; height: calc(var(--stage) + 5 * var(--step)); }
+.stage {
+  position: sticky;
+  top: calc((100svh - var(--stage)) / 2);
+  height: var(--stage);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-align: center;
+}
+.cue { margin: 0 20px 30px; color: var(--cream); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; }
+.window { width: 100%; padding: 0 16px; }
+.deck {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6%;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 0.75%;
+  border-radius: 10px;
+  background: linear-gradient(#2b2c2f, #1b1c1e);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 24px 50px rgba(40, 10, 0, 0.5);
+}
+.key {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #060606;
+  color: #6f6b65;
+  font: 400 11px/1 -apple-system, system-ui, sans-serif;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.esc { width: 4.6%; }
+.touchid { width: 3.1%; }
+.touchid::after { content: ''; width: 46%; aspect-ratio: 1; border-radius: 50%; border: 1px solid #1d1d1d; }
+
+.bar { position: relative; flex: 1; min-width: 0; border-radius: 5px; overflow: hidden; background: #000; box-shadow: inset 0 0 0 1px #0c0c0c; }
+.bar .lit { position: absolute; inset: 0; display: flex; clip-path: inset(0 calc(50% * (1 - var(--open, 0))) 0 calc(50% * (1 - var(--open, 0)))); }
+.bar .screen { position: relative; height: 100%; flex: none; }
+.bar .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.bar canvas.crew { display: block; height: 100%; flex: none; touch-action: pan-y; cursor: pointer; }
+.bar::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(rgba(255, 255, 255, 0.035), transparent 45%); }
+.front { display: none; }
+.reading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding-left: 1.1em;
+  background: #000;
+  color: #ece8e0;
+  font: 600 1em/1 -apple-system, system-ui, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.reading span { color: #8b877f; font-weight: 500; font-size: 0.8em; }
+.ring { position: absolute; width: var(--size, 30px); aspect-ratio: 1; transform: translate(-50%, -50%) rotate(-90deg); pointer-events: none; overflow: visible; }
+.ring circle { fill: none; stroke: var(--amber); stroke-width: 2.5; stroke-dasharray: 1; stroke-dashoffset: calc(1 - var(--held, 0)); filter: drop-shadow(0 0 3px var(--glow)); }
+
+/* Which of the five is showing. */
+.ticks { display: flex; gap: 8px; margin-top: 30px; }
+.ticks i { width: 26px; height: 3px; background: var(--cream-faint); transition: background 0.3s; }
+.ticks i.on { background: var(--amber); }
+
+/* What it does: the panel on a Mac's screen, as wide as the Touch Bar above (tour.js), with
+   what each step is for under it; then six lines. */
+.features { max-width: 1212px; margin: clamp(24px, 5vh, 64px) auto 0; padding: 0 16px; }
+.tour { max-width: 1180px; margin: 0 auto; }
+.tour-caption { min-height: 1.5em; margin: 24px auto clamp(56px, 9vh, 104px); color: var(--cream); font: 500 15px/1.5 'IBM Plex Mono', monospace; text-align: center; text-wrap: balance; transition: opacity 0.18s; }
+.tour-caption.hush { opacity: 0; }
+.features ul { list-style: none; max-width: 1048px; margin: 0 auto; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: clamp(28px, 4vw, 64px); }
+.features li { padding: 20px 0 36px; border-top: 1px solid var(--cream-faint); }
+.features h3 { margin: 0; color: var(--cream); font-size: clamp(22px, 2vw, 27px); line-height: 1; letter-spacing: 0.03em; }
+.features li p { margin: 10px 0 0; max-width: 36ch; color: var(--cream-soft); font-size: 12.5px; line-height: 1.65; text-wrap: pretty; }
+.state { white-space: nowrap; }
+.state i { display: inline-block; width: 7px; height: 7px; margin: 0 5px 1px 0; vertical-align: middle; }
+.state i.working { background: #e0443e; }
+.state i.asking { background: #f5a623; }
+.state i.done { background: #4fb477; }
+.state i.idle { background: #4a86d8; }
+
+/* The end: the same thing, done by your agent. */
+.agent { max-width: 900px; margin: clamp(40px, 8vh, 96px) auto 0; padding: 0 16px; text-align: center; }
+.agent h2 { margin: 0; color: var(--cream); font-size: clamp(28px, 3vw, 40px); line-height: 1; letter-spacing: 0.03em; }
+.agent .lead { margin: 10px auto 22px; color: var(--cream-soft); font-size: 12.5px; text-wrap: balance; }
+
+footer { margin: clamp(36px, 6vh, 64px) 0 0; padding: 0 24px 28px; text-align: center; color: rgba(255, 240, 214, 0.45); font-size: 11px; text-wrap: balance; }
+
+/* Narrower windows. */
+@media (max-width: 900px) {
+  :root { --film: 100vw; }
+  .features ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Too narrow for the whole Touch Bar at a size you can read: it keeps its proportions, and
+   scrolling carries it past a window, end to end (main.js moves it). */
+@media (max-width: 1211px) {
+  :root { --step: 80svh; }
+  .window {
+    padding: 0;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  }
+  .deck { width: 1180px; margin: 0; padding: 9px; gap: 7px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1); will-change: transform; }
+  /* Back to the start, for the next style. */
+  .deck.gliding { transition: transform 0.55s cubic-bezier(0.45, 0, 0.2, 1); }
+  /* A touched Clawd's title shows beside it, where the window is. */
+  .reading { justify-content: flex-end; padding: 0 1.1em 0 0; }
+}
+
+/* Phones. */
+@media (max-width: 640px) {
+  /* A phone's strip is carried about 1,000px within each style: a screen's scrolling apiece
+     keeps it near the pace of your finger. */
+  :root { --film: 100vw; --film-ratio: 6 / 5; --step: 100svh; }
+  /* The first screen is exactly a screen, whatever the phone: the name, the film and its
+     label, then the repository, with what's left over shared equally above the name, between
+     the label and the link, and below the link. */
+  .hero {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: calc(28px + env(safe-area-inset-top)) 0 28px;
+  }
+  .hero > h1 { margin-top: auto; }
+  .hero > .get { align-self: stretch; margin: auto 0; }
+  h1 { font-size: min(80px, 21vw); }
+  .sub { margin-top: 0.55em; padding: 0 20px; font-size: min(17px, 4.6vw); }
+  .cinema { margin-top: 8px; }
+  .frame { --fade-x: 5%; --fade-top: 7%; --fade-bottom: 12%; }
+  .subtitle { bottom: 10%; max-width: 86%; font-size: 12px; }
+  .pump { margin-top: 4px; padding: 12px 20px 11px; font-size: 16px; }
+
+  /* A phone can't install it: the repository, to open (or keep for later). */
+  .get { padding: 20px 20px 0; }
+  .get .cmd { display: none; }
+  .repo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 6px;
+    background: var(--ink);
+    color: var(--cream);
+    font: 400 12.5px/1.2 'IBM Plex Mono', monospace;
+    text-decoration: none;
+    box-shadow: 0 14px 30px rgba(30, 8, 0, 0.4);
+  }
+  .repo svg { flex: none; color: var(--amber); }
+
+  .cue { margin-bottom: 24px; font-size: 11px; letter-spacing: 0.16em; }
+  .deck { width: 1320px; }
+  .ticks { margin-top: 26px; }
+
+  .features { padding: 0 20px; }
+  .tour-caption { min-height: 3em; margin-top: 18px; font-size: 13px; }
+  .features ul { grid-template-columns: 1fr; }
+  .features li { padding: 18px 0 24px; }
+  .features h3 { font-size: 23px; }
+  .features li p { max-width: none; font-size: 12.5px; }
+
+  /* The prompt reads as a sentence, so it wraps; the whole box copies it. */
+  .agent { padding: 0 20px; }
+  .agent h2 { font-size: 28px; }
+  .agent .lead { margin-bottom: 18px; }
+  .ask { position: relative; display: block; text-align: left; }
+  .ask code { display: block; padding: 16px 18px 36px; font-size: 12px; line-height: 1.6; white-space: normal; overflow: visible; }
+  .ask .copy { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 16px 12px; background: none; color: var(--amber); font-size: 15px; }
+  .ask .copy:hover { background: none; }
+  .ask .copy.copied { background: none; color: var(--cream); }
+
+  footer { margin-top: 40px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+}
+
+/* Short phones (an SE, with the browser's bars showing): the film cropped wider, so the first
+   screen still holds the name, the film and the link with room to spare. */
+@media (max-width: 640px) and (max-height: 620px) {
+  :root { --film-ratio: 3 / 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame video { display: none; }
+  .pump { display: none; }
+  .press { cursor: default; }
+}
