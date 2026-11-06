@@ -94,7 +94,7 @@ final class Usage {
   private var workingUntil = Date.distantPast
   private var timer: Timer?
   private var lastRead = Date.distantPast
-  private var direct = false // Claude Code's command wouldn't run, so the API is asked instead
+  private var commandMisses = 0 // reads in a row Claude Code's command didn't answer
 
   // A read every five minutes while the bar shows, and one as it shows if the last is older;
   // none while it's hidden, when nothing would show the numbers. Each read runs Claude Code for a
@@ -148,8 +148,14 @@ final class Usage {
   // Where Claude Code's command is installed, the numbers come from its own /usage, run out of
   // sight (no model, no conversation, nothing saved). Claude Code reads its sign-in itself, and
   // renews it when it has lapsed, so Guzzoline never touches the sign-in or the keychain, and
-  // macOS has nothing to ask about. Without the command, the sign-in is read from the keychain.
+  // macOS has nothing to ask about. Without the command, the sign-in is read from the keychain:
+  // the copy there lasts only hours, and only Claude Code renews it.
   private var running = false
+
+  // A read the command doesn't answer (the Mac asleep or offline, say) keeps the last numbers,
+  // and the next read tries it again. Only when it hasn't answered this many reads in a row (a
+  // launcher that can't find Node, say) is the API asked instead, read by read.
+  private static let missesBeforeAPI = 3
 
   private func readThroughClaude(_ claude: URL) {
     guard !running else { return }
@@ -160,14 +166,15 @@ final class Usage {
       let usage = report.flatMap { UsageReport.usage(from: $0) }
       DispatchQueue.main.async {
         self.running = false
+        self.commandMisses = output == nil ? self.commandMisses + 1 : 0
         if let usage {
           self.received(200, usage)
         } else if output == nil {
-          // It wouldn't run at all (a launcher that can't find Node, say): ask the API instead,
-          // from now on. A refusal or an odd report doesn't count; those keep the last numbers.
-          log("Claude Code's command wouldn't run, so usage is read from the API")
-          self.direct = true
-          self.fetch()
+          // It didn't answer. A refusal or an odd report doesn't count as a miss; those keep the
+          // last numbers too.
+          let asking = self.commandMisses >= Usage.missesBeforeAPI
+          log("Claude Code's command didn't answer (\(self.commandMisses) in a row)\(asking ? ", so this read asks the API" : "")")
+          if asking { self.readFromAPI() }
         } else if let report, report.range(of: "log ?in|sign ?in|logged out", options: [.regularExpression, .caseInsensitive]) != nil {
           log("Claude Code isn't signed in")
           self.signedOut = true
@@ -215,11 +222,17 @@ final class Usage {
     // Asked to wait, it waits, rather than being refused every minute.
     guard Date() >= waitUntil else { return }
     lastRead = Date()
-    if !direct, let claude = Usage.claudeCommand() {
+    if let claude = Usage.claudeCommand() {
       try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
       readThroughClaude(claude)
       return
     }
+    readFromAPI()
+  }
+
+  // The API, with Claude Code's sign-in from the keychain: where its command isn't installed, or
+  // keeps not answering. Either way nothing here renews the sign-in, so its lapsing is yours to fix.
+  private func readFromAPI() {
     if let token {
       request(token)
       return
@@ -232,12 +245,14 @@ final class Usage {
       DispatchQueue.main.async {
         self.readingToken = false
         self.token = found
-        self.signedOut = found == nil
-        if let found { self.request(found) } else {
-          log("no Claude Code sign-in in the keychain")
-          self.note = "To see your usage, install Claude Code and sign in"
-          self.onChange?()
+        if let found {
+          self.request(found)
+          return
         }
+        log("no Claude Code sign-in in the keychain")
+        self.signedOut = true
+        self.note = "To see your usage, install Claude Code and sign in"
+        self.onChange?()
       }
     }
   }
