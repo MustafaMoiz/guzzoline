@@ -56,7 +56,7 @@ There are five themes. Walk: Clawd walks along the bar. Phosphor: a fluorescent 
 
 ## What it sees, and what it does with it
 
-- **Your usage.** Guzzoline runs Claude Code's own `/usage` command and reads the numbers it prints, so it never sees your sign-in. (Only if the `claude` command isn't installed does it read Claude Code's sign-in from your keychain, with your permission, to ask Anthropic itself.)
+- **Your usage.** Guzzoline runs Claude Code's own `/usage` command and reads the numbers it prints, so it never sees your sign-in. (Only if the `claude` command isn't installed, or stops answering for several reads in a row, does it read Claude Code's sign-in from your keychain, with your permission, to ask Anthropic itself.)
 - **Your sessions.** It reads the list the Claude app keeps on your Mac: each session's title, and whether it's working. Not your conversations.
 - **The microphone**, only while you hold a Clawd. macOS turns your speech into text on your Mac. (Before macOS 26, that's Dictation, which has to be on and may send the audio to Apple.)
 - **Accessibility**, to type into Claude's message box and press Return. Guzzoline types only when it can see the cursor is in Claude's message box, and presses Return only when the box holds exactly what you said, so it never sends a draft of yours.
@@ -86,7 +86,7 @@ How it works:
 
 - The Touch Bar over every app's is a private macOS API, the one [Pock](https://github.com/pock/pock) uses. Apple could change it.
 - Themes are drawn with Core Graphics and Metal shaders ported from the WebGL ones (`mac/*Theme.swift`), at 60 frames a second while something moves and 6 while it's still. On an M1 a still bar costs about 1.5% of one core.
-- Usage comes from Claude Code's `/usage` report, read into the API's shape (`mac/UsageReport.swift`), every five minutes while the bar shows, and never while it's hidden. Without the `claude` command, Guzzoline reads Claude Code's sign-in from the keychain and asks the API directly; then macOS asks you to allow each new build, since the keychain knows an app by its build unless Apple signed it.
+- Usage comes from Claude Code's `/usage` report, read into the API's shape (`mac/UsageReport.swift`), every five minutes while the bar shows, and never while it's hidden. A read the command doesn't answer (the Mac asleep or offline) keeps the last numbers, and the next read tries it again. Without the `claude` command, or after three reads in a row it didn't answer, Guzzoline reads Claude Code's sign-in from the keychain and asks the API directly; then macOS asks you to allow each new build, since the keychain knows an app by its build unless Apple signed it.
 - Sessions come from the files the Claude app keeps in `~/Library/Application Support/Claude/claude-code-sessions`. That's the app's own format, not a published one, so an update to the app could break it. Opening one uses the app's `claude://code/continue?session=` link.
 - macOS doesn't say which app one of its own prompts is for, so while one is on screen, every working session turns amber. Guzzoline reads only the name of the system agent that owns the window, never its title.
 - Talking (`mac/Voice.swift`) uses macOS's SpeechAnalyzer from macOS 26, and SFSpeechRecognizer before it. The words are typed as keystrokes that carry the text itself, so the keyboard layout doesn't matter and the clipboard is left alone. The Claude app has no link that carries a message, so typing is the only way in.
