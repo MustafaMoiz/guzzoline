@@ -105,14 +105,13 @@ final class MarqueeTheme: NativeTheme {
   }
 
   // Lit up to the fraction, the rest of the meter glowing faintly; a week is ruled in days.
-  private func meter(_ box: Box, _ fraction: Double, _ pace: Double?, _ chase: Bool, _ t: Double, days: Int = 0) {
+  private func meter(_ box: Box, _ fraction: Double, _ pace: Double?, days: Int = 0) {
     let lit = Int((fraction * Double(box.w)).rounded())
     let every = days > 0 ? Int((Double(box.w) / Double(days)).rounded()) : 0
     for c in 0..<box.w {
       let dayLine = days > 0 && c > 0 && c % every == 0
       for r in 0..<box.rows {
         var v: Float = c < lit ? 1 : 0.1
-        if c < lit, chase, (c - Int(floor(t * 14))) % 6 == 0 { v = 0.35 }
         if dayLine { v = 0 }
         dash.set(box.x + c, box.top + r, v)
       }
@@ -158,7 +157,7 @@ final class MarqueeTheme: NativeTheme {
     let figuresX = min(textX, week.x - 7 - (PixelFont.width(firstNumber) + 5 + PixelFont.width(firstReset)))
     let barBox = Box(x: bar.x, w: max(20, min(bar.w, figuresX - 6 - bar.x)), top: bar.top, rows: bar.rows)
     meter(barBox, v.showUsed ? s.used : s.left, s.active ? (v.showUsed ? s.elapsed : 1 - s.elapsed) : nil,
-          v.working && !asleep, t, days: s.kind == "week" ? 7 : 0)
+          days: s.kind == "week" ? 7 : 0)
     let blinkOff = Int(floor(t * 1.6)) % 2 == 1
     var x = text(dash, firstNumber, figuresX, 2)
     if !(s.status == "out" && blinkOff) { text(dash, firstReset, x + 4, 2, 0.6) }
@@ -170,7 +169,7 @@ final class MarqueeTheme: NativeTheme {
     // meter makes it, rather than being written over.
     let figures = PixelFont.width(number) + 5 + PixelFont.width(reset)
     let meterBox = Box(x: week.x, w: max(20, min(week.w, right - figures - 6 - week.x)), top: week.top, rows: week.rows)
-    meter(meterBox, v.showUsed ? w.used : w.left, w.active ? (v.showUsed ? w.elapsed : 1 - w.elapsed) : nil, false, t, days: 7)
+    meter(meterBox, v.showUsed ? w.used : w.left, w.active ? (v.showUsed ? w.elapsed : 1 - w.elapsed) : nil, days: 7)
     // A text's end is a lamp of spacing past its last glyph, and the reset starts 4 after.
     x = text(dash, number, right - (PixelFont.width(number) + 5 + PixelFont.width(reset)), 2)
     if !(w.status == "out" && blinkOff) { text(dash, reset, x + 4, 2, 0.6) }
