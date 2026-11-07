@@ -93,7 +93,7 @@ const sentence = (v) => [v.primary, v.secondary].filter(Boolean).map(phrase).joi
 export default {
   id: 'marquee',
   name: 'Marquee',
-  note: 'An LED sign. Now and then it spells the numbers out (click it); lamps chase while Claude works.',
+  note: 'An LED sign. Now and then it spells the numbers out (click it).',
 
   create(canvas, { width, height }) {
     const COLS = Math.floor(width / PITCH);
@@ -131,13 +131,12 @@ export default {
     }
 
     // Lit up to the fraction, the rest of the meter glowing faintly; a week is ruled in days.
-    function meter(p, box, fraction, pace, chase, t, days = 0) {
+    function meter(p, box, fraction, pace, days = 0) {
       const lit = Math.round(fraction * box.w);
       for (let c = 0; c < box.w; c++) {
         const dayLine = days && c > 0 && c % Math.round(box.w / days) === 0;
         for (let r = 0; r < box.rows; r++) {
           let v = c < lit ? 1 : 0.1;
-          if (c < lit && chase && (c - Math.floor(t * 14)) % 6 === 0) v = 0.35;
           if (dayLine) v = 0;
           p.set(box.x + c, box.top + r, v);
         }
@@ -165,7 +164,7 @@ export default {
       const textX = Math.min(TEXT, WEEK.x - 7 - (textWidth(number) + 5 + textWidth(reset)));
       const barBox = { ...BAR, w: Math.max(20, Math.min(BAR.w, textX - 6 - BAR.x)) };
       meter(dash, barBox, used ? s.used : s.left, s.active ? (used ? s.elapsed : 1 - s.elapsed) : null,
-        v.working && !asleep, t, s.kind === 'week' ? 7 : 0);
+        s.kind === 'week' ? 7 : 0);
       const blinkOff = Math.floor(t * 1.6) % 2 === 1;
       let x = text(dash, number, textX, 2);
       if (!(s.status === 'out' && blinkOff)) text(dash, reset, x + 4, 2, 0.6);
@@ -177,7 +176,7 @@ export default {
       // meter makes it, rather than being written over.
       const figures = textWidth(weekNumber) + 5 + textWidth(weekReset);
       const meterBox = { ...WEEK, w: Math.max(20, Math.min(WEEK.w, RIGHT - figures - 6 - WEEK.x)) };
-      meter(dash, meterBox, used ? w.used : w.left, w.active ? (used ? w.elapsed : 1 - w.elapsed) : null, false, t, 7);
+      meter(dash, meterBox, used ? w.used : w.left, w.active ? (used ? w.elapsed : 1 - w.elapsed) : null, 7);
       // A text's end is a dot of spacing past its last glyph, and the reset starts 4 dots after.
       x = text(dash, weekNumber, RIGHT - (textWidth(weekNumber) + 5 + textWidth(weekReset)), 2);
       if (!(w.status === 'out' && blinkOff)) text(dash, weekReset, x + 4, 2, 0.6);
