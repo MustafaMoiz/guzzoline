@@ -12,12 +12,37 @@ const USAGE_CACHE = `${homedir()}/Library/Application Support/Guzzoline/usage.js
 const SESSIONS = `${homedir()}/Library/Application Support/Claude/claude-code-sessions`;
 const RECENT = 12 * 60 * 60e3;
 
-// A session's state: waiting on you, working until its latest message has a summary, or
-// finished: done (or failed) for an hour, idle after. The Touch Bar app starts the hour when
-// you're next at the Mac.
-function sessionState(s, waiting) {
+// Each claude process keeps a record of the session it runs, <pid>.json, which says busy until
+// its turn is over and so is any agent or workflow it left working in the background.
+const RUNNING = `${homedir()}/.claude/sessions`;
+
+// The Claude app's ids for the sessions Claude Code is still busy with, as the Touch Bar app reads
+// them: a record counts while its process runs and began before the record did (a process that
+// ended without clearing its record left it behind, and a newer one may have its number).
+function busySessions() {
+  if (!existsSync(RUNNING)) return new Set();
+  const runs = [];
+  for (const file of readdirSync(RUNNING).filter((f) => /^\d+\.json$/.test(f))) {
+    try {
+      const r = JSON.parse(readFileSync(join(RUNNING, file), 'utf8'));
+      if (r.hostSessionId && r.pid > 0 && ['busy', 'waiting'].includes(r.status)) runs.push(r);
+    } catch { /* a file being written */ }
+  }
+  if (!runs.length) return new Set();
+  const began = {};
+  try {
+    const ps = execFileSync('ps', ['-o', 'pid=,lstart=', '-p', runs.map((r) => r.pid).join(',')], { encoding: 'utf8' });
+    for (const [, pid, start] of ps.matchAll(/^\s*(\d+)\s+(.+?)\s*$/gm)) began[pid] = Date.parse(start);
+  } catch { /* none of them is running */ }
+  return new Set(runs.filter((r) => began[r.pid] <= (r.startedAt ?? 0) + 1000).map((r) => r.hostSessionId));
+}
+
+// A session's state: waiting on you, working until its latest message has a summary and Claude
+// Code isn't busy with it, or finished: done (or failed) for an hour, idle after. The Touch Bar
+// app starts the hour when you're next at the Mac.
+function sessionState(s, waiting, busy) {
   if (waiting) return 'asking';
-  if (s.postTurnSummaryFor !== s.lastAssistantUuid) return 'working';
+  if (s.postTurnSummaryFor !== s.lastAssistantUuid || busy) return 'working';
   if (Date.now() - (s.lastTurnEdgeAt ?? 0) > 60 * 60e3) return 'idle';
   return s.postTurnSummary?.status_category === 'failed' ? 'failed' : 'done';
 }
@@ -26,6 +51,7 @@ function sessionState(s, waiting) {
 function recentSessions() {
   if (!existsSync(SESSIONS)) return [];
   const out = [];
+  const busy = busySessions();
   for (const account of readdirSync(SESSIONS)) {
     for (const org of readdirSync(join(SESSIONS, account))) {
       const dir = join(SESSIONS, account, org);
@@ -34,7 +60,7 @@ function recentSessions() {
         try {
           const s = JSON.parse(readFileSync(join(dir, file), 'utf8'));
           if (s.isArchived || Date.now() - (s.lastActivityAt ?? 0) > RECENT) continue;
-          out.push({ id: s.sessionId, title: s.title || 'Untitled', state: sessionState(s, waiting.includes(s.sessionId)),
+          out.push({ id: s.sessionId, title: s.title || 'Untitled', state: sessionState(s, waiting.includes(s.sessionId), busy.has(s.sessionId)),
             createdAt: s.createdAt ?? 0, activityAt: s.lastActivityAt ?? 0 });
         } catch { /* a file being written */ }
       }
