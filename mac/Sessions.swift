@@ -3,6 +3,11 @@
 // changes): <account>/<org>/local_<id>.json, and an entry in waiting-input/ while one waits on
 // you. Only titles and states are read from them.
 //
+// A session can reply while agents or a workflow it started are still at work in the background.
+// The Claude app's files don't say so, but Claude Code's do: each claude process keeps a record of
+// the session it runs, ~/.claude/sessions/<pid>.json, which says busy until that work is done too.
+// Commands left running in the background, like a server, don't keep it busy.
+//
 // Which ones are on the bar is yours to choose from the menu. A new session joins by itself, one
 // you take off stays off, and five fit: a sixth bumps the one you've been away from longest,
 // which comes back when you next write to it. A finished session stays green for an hour,
@@ -58,6 +63,7 @@ final class Sessions {
   private let queue = DispatchQueue(label: "app.guzzoline.sessions", qos: .utility)
   private let defaults: UserDefaults
   private let root: URL
+  private let running: URL // Claude Code's records of the sessions its processes run
 
   // What a session's file said, kept until the file is written again.
   private struct Record {
@@ -82,12 +88,29 @@ final class Sessions {
       failed = (s["postTurnSummary"] as? [String: Any])?["status_category"] as? String == "failed"
     }
 
-    // Waiting on you, working, or finished: green (done or failed) for a while, then idle.
-    func state(waiting: Bool, prompted: Bool, lately: Bool) -> Session.State {
+    // Waiting on you, working (its turn, or what it left running), or finished: green (done or
+    // failed) for a while, then idle.
+    func state(waiting: Bool, busy: Bool, prompted: Bool, lately: Bool) -> Session.State {
       if waiting { return .asking }
-      if !summarized { return prompted ? .asking : .working }
+      if !summarized || busy { return prompted ? .asking : .working }
       if !lately { return .idle }
       return failed ? .failed : .done
+    }
+  }
+
+  // What a claude process's record said, kept until the file is written again.
+  private struct Run {
+    let session: String? // the Claude app's id for it; none for one started in Terminal
+    let pid: pid_t
+    let started: Double // seconds
+    let busy: Bool // working, on its turn or in the background, or asking you something
+
+    init?(_ data: Data) {
+      guard let s = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+      session = s["hostSessionId"] as? String
+      pid = pid_t(truncatingIfNeeded: s["pid"] as? Int ?? 0)
+      started = ((s["startedAt"] as? Double) ?? 0) / 1000
+      busy = ["busy", "waiting"].contains(s["status"] as? String ?? "")
     }
   }
 
@@ -113,6 +136,7 @@ final class Sessions {
   }
 
   private var records: [String: (written: Date, record: Record)] = [:] // by file
+  private var runs: [String: (written: Date, run: Run)] = [:] // by file
   private var choice: Choice
   private var saved: Choice // as it was last saved
   private var firstLaunch: Bool
@@ -120,9 +144,11 @@ final class Sessions {
   // All of the above belong to the queue.
 
   init(defaults: UserDefaults = .standard, root: URL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")) {
+        .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions"),
+       running: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions")) {
     self.defaults = defaults
     self.root = root
+    self.running = running
     let saved = defaults.data(forKey: "sessions").flatMap { try? JSONDecoder().decode(Choice.self, from: $0) }
     choice = saved ?? Choice()
     self.saved = choice
@@ -230,11 +256,13 @@ final class Sessions {
     var all: [(active: Double, session: Session)] = []
     var call = false
     let touched = self.touched()
-    let prompted = found.contains { !$0.record.summarized } && prompting()
+    let busy = self.busy()
+    let finished = { (r: Record) in r.summarized && !busy.contains(r.id) } // its turn, and what it left running
+    let prompted = found.contains { !finished($0.record) } && prompting()
     for (r, waiting) in found {
       let was = states[r.id]
       var lately = true
-      if r.summarized {
+      if finished(r) {
         // Its hour starts when you're next at the Mac after it finished. One that finished
         // before this was reading counts from when it finished.
         var back = choice.back[r.id].flatMap { $0.edge == r.turnEdge ? $0 : nil }
@@ -243,7 +271,7 @@ final class Sessions {
         choice.back[r.id] = back
         lately = back.at == 0 || now - back.at < Sessions.green
       }
-      let state = r.state(waiting: waiting, prompted: prompted, lately: lately)
+      let state = r.state(waiting: waiting, busy: busy.contains(r.id), prompted: prompted, lately: lately)
       let s = Session(id: r.id, title: r.title, state: state, since: r.turnEdge)
       all.append((r.active, s))
       if choice.bar[r.id] != nil { bar.append((r.created, s)) }
@@ -264,5 +292,44 @@ final class Sessions {
     var recent = all.sorted { $0.active > $1.active }.prefix(Sessions.listed).map(\.session)
     recent += onBar.filter { s in !recent.contains { $0.id == s.id } }
     return (onBar, recent, call)
+  }
+
+  // The sessions Claude Code is still busy with, by the Claude app's ids for them, from the
+  // records its processes keep. A process that ended without clearing its record left it behind,
+  // and a newer process may have its number, so a record counts only while its process is running
+  // and began before the record did.
+  private func busy() -> Set<String> {
+    let files = FileManager.default
+    var busy = Set<String>()
+    var read = Set<String>()
+    for file in (try? files.contentsOfDirectory(at: running, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
+      // <pid>.json only: the .key file beside each holds that process's secret, and isn't read.
+      guard file.pathExtension == "json", pid_t(file.deletingPathExtension().lastPathComponent) != nil,
+            let written = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else { continue }
+      read.insert(file.path)
+      var run = runs[file.path]?.run
+      if runs[file.path]?.written != written, let data = try? Data(contentsOf: file) {
+        // One caught halfway through being written is read again next time.
+        if let fresh = Run(data) {
+          run = fresh
+          runs[file.path] = (written, fresh)
+        }
+      }
+      guard let run, run.busy, let session = run.session, run.pid > 0,
+            let began = Sessions.began(run.pid), began <= run.started + 1 else { continue }
+      busy.insert(session)
+    }
+    runs = runs.filter { read.contains($0.key) }
+    return busy
+  }
+
+  // When the running process with this number began, in seconds, or nil when there's none.
+  private static func began(_ pid: pid_t) -> Double? {
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    guard sysctl(&name, 4, &info, &size, nil, 0) == 0, size > 0, Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
+    let t = info.kp_proc.p_starttime
+    return Double(t.tv_sec) + Double(t.tv_usec) / 1_000_000
   }
 }
