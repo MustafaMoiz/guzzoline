@@ -403,3 +403,56 @@ final class StatusView: NSView {
     CTLineDraw(line, context)
   }
 }
+
+// Signing in from the bar, which it has to itself: what's happening, and a button for the next
+// step (signing in, or starting that again), the two together in the middle of the bar. The words
+// are in the theme's type and colours; the button is the Touch Bar's own.
+final class SignInView: NSView {
+  var onTap: (() -> Void)?
+  private let words = NSTextField(labelWithString: "")
+  private let button = NSButton(title: "", target: nil, action: nil)
+  private static let gap: CGFloat = 14
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    words.lineBreakMode = .byTruncatingTail
+    button.target = self
+    button.action = #selector(pressed)
+    addSubview(words)
+    addSubview(button)
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func dress(_ theme: String) {
+    let skin = Skin.of(theme)
+    layer?.backgroundColor = skin.bg
+    words.font = VoiceCard.type(for: theme).words as NSFont
+    words.textColor = NSColor(cgColor: skin.ink) ?? .white
+    needsLayout = true
+  }
+
+  // The words, and the button's title (none for no button).
+  func show(_ text: String, button title: String?) {
+    words.stringValue = text
+    button.title = title ?? ""
+    button.isHidden = title == nil
+    needsLayout = true
+  }
+
+  override func layout() {
+    super.layout()
+    let buttonWidth = button.isHidden ? 0 : max(84, button.intrinsicContentSize.width + 20)
+    let beside = button.isHidden ? 0 : SignInView.gap + buttonWidth
+    // Measured in its own font: the label's own idea of its width cuts the last letter off.
+    let size = words.intrinsicContentSize
+    let measured = (words.stringValue as NSString).size(withAttributes: [.font: words.font ?? NSFont.systemFont(ofSize: 15)])
+    let textWidth = min(ceil(measured.width) + 8, bounds.width - beside - 24)
+    let x = ((bounds.width - textWidth - beside) / 2).rounded()
+    words.frame = NSRect(x: x, y: ((bounds.height - size.height) / 2).rounded(), width: textWidth, height: size.height)
+    button.frame = NSRect(x: x + textWidth + SignInView.gap, y: 0, width: buttonWidth, height: bounds.height)
+  }
+
+  @objc private func pressed() { onTap?() }
+}

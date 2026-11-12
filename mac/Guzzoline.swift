@@ -164,6 +164,9 @@ final class Usage {
       let output = Usage.run(claude, ["-p", "/usage", "--no-session-persistence", "--output-format", "json"])
       let report = output.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["result"] as? String
       let usage = report.flatMap { UsageReport.usage(from: $0) }
+      // Signed out, /usage still answers, with this run's cost ($0) where the limits were, so a
+      // report without numbers is checked against Claude Code's own word on its sign-in.
+      let signedIn = usage == nil && output != nil ? Usage.signedIn(claude) : nil
       DispatchQueue.main.async {
         self.running = false
         self.commandMisses = output == nil ? self.commandMisses + 1 : 0
@@ -175,30 +178,121 @@ final class Usage {
           let asking = self.commandMisses >= Usage.missesBeforeAPI
           log("Claude Code's command didn't answer (\(self.commandMisses) in a row)\(asking ? ", so this read asks the API" : "")")
           if asking { self.readFromAPI() }
-        } else if let report, report.range(of: "log ?in|sign ?in|logged out", options: [.regularExpression, .caseInsensitive]) != nil {
-          log("Claude Code isn't signed in")
+        } else if signedIn == false || report?.range(of: "log ?in|sign ?in|logged out", options: [.regularExpression, .caseInsensitive]) != nil {
+          if !self.signedOut { log("Claude Code isn't signed in") }
           self.signedOut = true
-          self.note = "Sign in to Claude Code: run claude in Terminal once"
+          if self.signingIn == nil { self.note = Usage.signedOutNote }
           self.onChange?()
         } else {
           // Refused for now, most likely: the last numbers stay up.
           log(report == nil ? "Claude Code's /usage didn't answer" : "Claude Code's /usage gave no numbers")
         }
+        if self.readAfterRun {
+          // Signed in while this read ran: the read that counts is the next one.
+          self.readAfterRun = false
+          self.fetch()
+        } else if self.readingAfterSignIn {
+          // The first read since signing in brought no numbers: the bar goes back to what it had.
+          self.readingAfterSignIn = false
+          self.onChange?()
+        }
       }
     }
   }
 
-  // Runs a command for its output, for a minute at most, with the folders it may need (Node's, for
-  // an npm install) on its path: an app started from the Dock has only the system's.
-  private static func run(_ command: URL, _ arguments: [String]) -> Data? {
+  // Signing in from the bar, where Claude Code is installed: needed (signed out), waiting on you
+  // in the browser, or done and reading the first numbers since. Until those come, the bar shows
+  // none, rather than the last ones read before the sign-in lapsed.
+  enum SignInStage { case none, needed, waiting, reading }
+  var signInStage: SignInStage {
+    if signingIn != nil { return .waiting }
+    if readingAfterSignIn { return .reading }
+    return signedOut && Usage.claudeCommand() != nil ? .needed : .none
+  }
+  static let signedOutNote = "Claude Code is signed out."
+  private var signingIn: Process? // Claude Code's sign-in, started from the bar, while it waits on you
+  private var readingAfterSignIn = false
+  private var readAfterRun = false // signed in while a read was running: read again once it's done
+
+  // Claude Code's own sign-in (`claude auth login`), started from the bar. It opens the sign-in
+  // page in your browser and hears back from it on this Mac, so it needs no Terminal, and
+  // Guzzoline never sees the sign-in. Once it's done, the numbers are read at once. Started again
+  // while it waits, it starts afresh (the page was closed, say); after ten minutes it gives up.
+  func startSignIn() {
+    guard signedOut, let claude = Usage.claudeCommand() else { return }
+    signingIn?.terminate()
+    let process = Process()
+    process.executableURL = claude
+    process.arguments = ["auth", "login"]
+    try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+    process.currentDirectoryURL = cacheFile.deletingLastPathComponent()
+    process.environment = Usage.environment(for: claude)
+    process.standardInput = FileHandle.nullDevice
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    process.terminationHandler = { [weak self] ended in
+      DispatchQueue.main.async {
+        guard let self, self.signingIn === ended else { return }
+        self.signingIn = nil
+        if ended.terminationStatus == 0 {
+          log("signed in to Claude Code")
+          self.signedOut = false
+          self.note = ""
+          self.readingAfterSignIn = true
+          self.waitUntil = .distantPast
+          if self.running { self.readAfterRun = true } else { self.fetch() }
+        } else {
+          log("Claude Code's sign-in didn't finish")
+          self.note = Usage.signedOutNote
+        }
+        self.onChange?()
+      }
+    }
+    do { try process.run() } catch {
+      log("couldn't start Claude Code's sign-in")
+      return
+    }
+    signingIn = process
+    log("signing in to Claude Code")
+    onChange?()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 600) { [weak self, weak process] in
+      guard let self, let process, self.signingIn === process, process.isRunning else { return }
+      process.terminate()
+    }
+  }
+
+  // As Guzzoline quits: a sign-in it started doesn't outlive it.
+  func cancelSignIn() {
+    let process = signingIn
+    signingIn = nil
+    process?.terminate()
+  }
+
+  // Whether Claude Code says it's signed in, or nil where it can't say (a version without `claude
+  // auth status`, say). Signed out, that command exits with an error but still says so.
+  private static func signedIn(_ claude: URL) -> Bool? {
+    let status = run(claude, ["auth", "status", "--json"], anyExit: true)
+      .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    return status?["loggedIn"] as? Bool
+  }
+
+  // Claude Code's command runs with the folders it may need (Node's, for an npm install) on its
+  // path: an app started from the Dock has only the system's.
+  private static func environment(for command: URL) -> [String: String] {
+    var environment = ProcessInfo.processInfo.environment
+    environment["PATH"] = ([command.deletingLastPathComponent().path] + folders + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]).joined(separator: ":")
+    return environment
+  }
+
+  // Runs a command for its output, for a minute at most. Output from a command that failed counts
+  // only with `anyExit`.
+  private static func run(_ command: URL, _ arguments: [String], anyExit: Bool = false) -> Data? {
     let process = Process()
     let out = Pipe()
     process.executableURL = command
     process.arguments = arguments
     process.currentDirectoryURL = cacheFile.deletingLastPathComponent()
-    var environment = ProcessInfo.processInfo.environment
-    environment["PATH"] = ([command.deletingLastPathComponent().path] + folders + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]).joined(separator: ":")
-    process.environment = environment
+    process.environment = environment(for: command)
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = out
     process.standardError = FileHandle.nullDevice
@@ -214,7 +308,7 @@ final class Usage {
     let deadline = Date().addingTimeInterval(60)
     while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
     if process.isRunning { process.terminate() }
-    guard reading.wait(timeout: .now() + 2) == .success, !process.isRunning, process.terminationStatus == 0 else { return nil }
+    guard reading.wait(timeout: .now() + 2) == .success, !process.isRunning, anyExit || process.terminationStatus == 0 else { return nil }
     return data
   }
 
@@ -251,7 +345,9 @@ final class Usage {
         }
         log("no Claude Code sign-in in the keychain")
         self.signedOut = true
-        self.note = "To see your usage, install Claude Code and sign in"
+        if self.signingIn == nil {
+          self.note = Usage.claudeCommand() == nil ? "To see your usage, install Claude Code and sign in" : Usage.signedOutNote
+        }
         self.onChange?()
       }
     }
@@ -275,11 +371,15 @@ final class Usage {
     if status == 401 {
       token = nil // read again once it's renewed
       signedOut = true
-      note = "Claude Code's sign-in has lapsed: run claude in Terminal once"
+      if signingIn == nil {
+        note = Usage.claudeCommand() == nil ? "Claude Code's sign-in has lapsed: run claude in Terminal once" : Usage.signedOutNote
+      }
     } else if status == 200, let json {
       usage = json
       signedOut = false
       note = ""
+      readingAfterSignIn = false
+      cancelSignIn() // signed in some other way meanwhile
       // Until Claude Code tells us directly, a limit that moved since the last read means
       // Claude has been working.
       var now: [String: Double] = [:]
@@ -338,6 +438,8 @@ final class App: NSObject, NSApplicationDelegate, NSTouchBarDelegate {
   let usage = Usage()
   let barView = NSView() // the Touch Bar item: the theme's layer and the crew
   let statusLine = StatusView() // in the theme's place, until there are numbers to draw
+  let signInView = SignInView() // the whole bar, while you sign in to Claude Code from it
+  var signInShown = false
   let nativeThemes: [String: (MTLDevice, Int) -> NativeTheme?] = [
     "walk": { WalkTheme(device: $0, width: $1) },
     "phosphor": { PhosphorTheme(device: $0, width: $1) },
@@ -537,6 +639,20 @@ final class App: NSObject, NSApplicationDelegate, NSTouchBarDelegate {
       log("no Metal device, so nothing to draw with")
       return
     }
+    // Signing in from the bar, the sign-in has the bar to itself: no numbers, no crew.
+    signInShown = signInStage != .none
+    if signInShown {
+      laidOutFor = 0
+      signInView.frame = NSRect(x: 0, y: 0, width: CGFloat(barWidth) / 2, height: CGFloat(barHeight) / 2)
+      signInView.dress(theme)
+      signInView.onTap = { [weak self] in self?.usage.startSignIn() }
+      showStatus()
+      barView.addSubview(signInView)
+      ticking(shown)
+      log("theme \(theme), signing in to Claude Code")
+      if panel?.isOpen == true { panel?.refresh() }
+      return
+    }
     // The crew takes the right of the bar, and the theme is laid out for what's left; until there
     // are numbers to draw, what's missing is said there instead.
     let row = Crew(device: device, count: sessionsNow.count)
@@ -553,7 +669,7 @@ final class App: NSObject, NSApplicationDelegate, NSTouchBarDelegate {
     } else {
       statusLine.frame = left
       statusLine.dress(theme)
-      statusLine.text = hasNumbers ? "Couldn't draw this theme" : statusText
+      showStatus()
       barView.addSubview(statusLine)
     }
     if let row {
@@ -586,14 +702,39 @@ final class App: NSObject, NSApplicationDelegate, NSTouchBarDelegate {
   }
 
   // The latest numbers, or the last saved ones while a read is refused; none while Claude Code's
-  // sign-in has lapsed, so the bar says why rather than showing old numbers.
+  // sign-in has lapsed, so the bar says why rather than showing old numbers, and none from signing
+  // in again until the first read since.
   func usageChanged() {
-    if usage.signedOut {
+    if usage.signedOut || usage.signInStage == .reading {
       limitsNow = []
     } else if let json = usage.usage ?? Usage.saved() {
       limitsNow = limits(fromUsage: json)
     }
-    if hasNumbers != (native != nil) { applyTheme() } else { statusLine.text = statusText }
+    if hasNumbers != (native != nil) || (signInStage != .none) != signInShown { applyTheme() } else { showStatus() }
+  }
+
+  // Where signing in from the bar stands. With --demo, --sign-in <needed|waiting|reading> shows
+  // one of its stages, for a picture.
+  var signInStage: Usage.SignInStage {
+    guard demo else { return usage.signInStage }
+    let args = CommandLine.arguments
+    guard let i = args.firstIndex(of: "--sign-in"), i + 1 < args.count else { return .none }
+    let stages: [String: Usage.SignInStage] = ["needed": .needed, "waiting": .waiting, "reading": .reading]
+    return stages[args[i + 1]] ?? .none
+  }
+
+  // What the bar says in place of the numbers: signing in from it, or what's missing.
+  func showStatus() {
+    if signInShown {
+      switch signInStage {
+      case .needed: signInView.show(Usage.signedOutNote, button: "Sign in")
+      case .waiting: signInView.show("Continue in your browser to sign in.", button: "Start over")
+      case .reading: signInView.show("Signed in. Reading your usage…", button: nil)
+      case .none: break
+      }
+      return
+    }
+    statusLine.text = hasNumbers ? "Couldn't draw this theme" : statusText
   }
 
   // A session came or went, and the theme makes room; otherwise the crew acts out the change.
@@ -622,6 +763,7 @@ final class App: NSObject, NSApplicationDelegate, NSTouchBarDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     awake.stop()
+    usage.cancelSignIn()
   }
 
   // A finger on the crew shows that session's title over the usage and lights its Clawd;
